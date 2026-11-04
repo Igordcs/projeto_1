@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Síntese e interpretação | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Síntese e Interpretação · Visão geral</div>
+  <h2>Síntese e interpretação dos resultados</h2>
+  <p>
+    Esta página reúne as partes do sistema: a preparação e a qualidade dos dados (Parte 1), os outliers (Parte 2),
+    o centro e a posição (Parte 3) e a forma e a dispersão (Parte 4). Todos os números vêm de
+    <code>jogos_limpo.csv</code> e são recalculados a cada carregamento.
+  </p>
+</div>
+
+<form method="get" action="{{ url_for('parte4.sintese') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os times</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Jogos analisados</div>
+    <div class="kpi-value">{{ data.qualidade.n_total }}</div>
+    <div class="kpi-sub">{{ data.qualidade.inicio }} a {{ data.qualidade.fim }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Ausentes / duplicados</div>
+    <div class="kpi-value">{{ data.qualidade.ausentes }} / {{ data.qualidade.duplicados }}</div>
+    <div class="kpi-sub">Nas sete variáveis do estudo</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Prorrogações mantidas</div>
+    <div class="kpi-value">{{ data.qualidade.prorrogacoes }}</div>
+    <div class="kpi-sub">MIN ≠ 240</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Zeros legítimos</div>
+    <div class="kpi-value">{{ data.qualidade.zeros.roubos + data.qualidade.zeros.tocos }}</div>
+    <div class="kpi-sub">Roubos {{ data.qualidade.zeros.roubos }} · Tocos {{ data.qualidade.zeros.tocos }}</div>
+  </div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Qualidade dos dados e o que ela permite concluir</h3>
+  {% for paragraph in data.texts.dados %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Quadro final: variável × time</span>
+    <span class="badge badge-study">Partes 2, 3 e 4</span>
+  </div>
+  <div class="card-subtitle">
+    Desvio com ddof = 1; quartis lineares; outliers pela regra de Tukey (1,5×IQR). “União P2” conta os jogos
+    sinalizados por pelo menos um dos sete métodos da Parte 2.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>Média</th>
+          <th>Mediana</th>
+          <th>Desvio</th>
+          <th>IQR</th>
+          <th>CV (%)</th>
+          <th>g1</th>
+          <th>Outliers (Tukey)</th>
+          <th>União P2</th>
+          <th>Leitura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr>
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.media|num2 }}</td>
+          <td>{{ row.mediana|num2 }}</td>
+          <td>{{ row.dp|num2 }}</td>
+          <td>{{ row.iqr|num2 }}</td>
+          <td>{{ row.cv|num2 }}</td>
+          <td>{{ row.g1|num2 }}</td>
+          <td>{{ row.n_outliers }}</td>
+          <td>{{ row.uniao }}</td>
+          <td>{{ row.leitura_curta }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Centro: onde cada time produz mais</h3>
+  {% for paragraph in data.texts.centro %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Outliers de Tukey por variável e time</span>
+    <span class="badge badge-aux">contagem</span>
+  </div>
+  <div id="chart-outliers" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Dispersão, forma e outliers</h3>
+  {% for paragraph in data.texts.dispersao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>Perfil de cada time</h3>
+  {% for paragraph in data.texts.perfis %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box amber">
+  <h3>Conclusão e limitações</h3>
+  {% for paragraph in data.texts.conclusao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-outliers", {{ data.chart_outliers_json | safe }});
+</script>
+{% endblock %}

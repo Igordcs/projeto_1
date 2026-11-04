@@ -43,6 +43,15 @@
       <a href="{{ url_for('parte3.descritiva', team=cur_team) }}" class="nav-link {% if active_page == 'descritiva' %}active{% endif %}">
         <span>Estatística Descritiva</span>
       </a>
+      <a href="{{ url_for('parte4.assimetria', team=cur_team) }}" class="nav-link {% if active_page == 'assimetria' %}active{% endif %}">
+        <span>Assimetria</span>
+      </a>
+      <a href="{{ url_for('parte4.cv', team=cur_team) }}" class="nav-link {% if active_page == 'cv' %}active{% endif %}">
+        <span>Coeficiente de Variação</span>
+      </a>
+      <a href="{{ url_for('parte4.iqr', team=cur_team) }}" class="nav-link {% if active_page == 'iqr' %}active{% endif %}">
+        <span>Amplitude Interquartil (IQR)</span>
+      </a>
     </div>
 
     <div class="nav-group">
@@ -54,9 +63,9 @@
 
     <div class="nav-group">
       <div class="nav-group-title">(iv) Síntese e Interpretação</div>
-      <span class="nav-link disabled">
+      <a href="{{ url_for('parte4.sintese', team=cur_team) }}" class="nav-link {% if active_page == 'sintese' %}active{% endif %}">
         <span>Síntese Geral dos Resultados</span>
-      </span>
+      </a>
     </div>
 
     <div class="nav-group">

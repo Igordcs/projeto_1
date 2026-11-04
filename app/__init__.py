@@ -17,12 +17,13 @@ def create_app() -> Flask:
     if not PROCESSED_PATH.exists():
         build_clean_dataframe(save=True)
 
-    from app.routes import main_bp, parte1_bp, parte2_bp, parte3_bp
+    from app.routes import main_bp, parte1_bp, parte2_bp, parte3_bp, parte4_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(parte1_bp)
     app.register_blueprint(parte2_bp)
     app.register_blueprint(parte3_bp)
+    app.register_blueprint(parte4_bp)
 
     @app.context_processor
     def inject_globals():

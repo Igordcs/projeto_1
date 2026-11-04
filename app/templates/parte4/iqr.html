@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Medidas: IQR | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Medidas Descritivas · Dispersão robusta</div>
+  <h2>Amplitude interquartil (IQR) e limites de Tukey</h2>
+  <p>
+    IQR = Q3 − Q1, com quartis por interpolação linear (pandas). O IQR é a largura da faixa que contém os 50% centrais
+    dos jogos. Os limites Q1 − 1,5×IQR e Q3 + 1,5×IQR são os mesmos do boxplot e da detecção de outliers.
+  </p>
+</div>
+
+<form method="get" action="{{ url_for('parte4.iqr') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os times</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável:</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar</button>
+</form>
+
+<div class="kpi-grid">
+  {% for r in data.sel %}
+  <div class="kpi-card">
+    <div class="kpi-label">IQR — {{ r.time }}</div>
+    <div class="kpi-value">{{ r.iqr|num2 }}</div>
+    <div class="kpi-sub">{{ data.var_meta.short_label }}: 50% dos jogos entre {{ r.q1|num2 }} e {{ r.q3|num2 }}</div>
+  </div>
+  {% endfor %}
+  <div class="kpi-card">
+    <div class="kpi-label">Conferência com a Parte 2</div>
+    <div class="kpi-value">{{ data.kpis.parte2_ok }} / {{ data.kpis.n_series }}</div>
+    <div class="kpi-sub">Séries com Q1, Q3, limites e outliers idênticos</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Outliers de Tukey</div>
+    <div class="kpi-value">{{ data.kpis.n_outliers }}</div>
+    <div class="kpi-sub">Somando as 14 séries</div>
+  </div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Leitura da variável selecionada</h3>
+  {% for paragraph in data.texts.leitura %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Q1, Q3 e IQR lado a lado</span>
+    <span class="badge badge-study">Celtics | Pelicans</span>
+  </div>
+  <div class="card-subtitle">Quartis por interpolação linear; a linha em destaque é a variável do seletor.</div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th rowspan="2">Variável</th>
+          <th colspan="3">Boston Celtics</th>
+          <th colspan="3">New Orleans Pelicans</th>
+        </tr>
+        <tr>
+          <th>Q1</th><th>Q3</th><th>IQR</th>
+          <th>Q1</th><th>Q3</th><th>IQR</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.lado_a_lado %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong> <span style="color:#64748B;">({{ row.unit }})</span></td>
+          <td>{{ row.a.q1|num2 }}</td><td>{{ row.a.q3|num2 }}</td><td><strong>{{ row.a.iqr|num2 }}</strong></td>
+          <td>{{ row.b.q1|num2 }}</td><td>{{ row.b.q3|num2 }}</td><td><strong>{{ row.b.iqr|num2 }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Amplitude, IQR e desvio — {{ data.var_meta.label }}</span>
+    <span class="badge badge-aux">{{ data.var_meta.unit }}</span>
+  </div>
+  <div class="card-subtitle">
+    Barra clara: do mínimo ao máximo. Barra escura: de Q1 a Q3. Losango: média, com o segmento de ±1 desvio.
+  </div>
+  <div id="chart-faixas" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>IQR comparado com amplitude e desvio</h3>
+  {% for paragraph in data.texts.comparacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Boxplot com os limites 1,5×IQR</span>
+    <span class="badge badge-aux">quartis do pandas</span>
+  </div>
+  <div class="card-subtitle">
+    As linhas vermelhas tracejadas são os limites calculados na tabela abaixo. Os bigodes terminam no último jogo
+    dentro deles; os círculos vermelhos são os jogos fora deles.
+  </div>
+  <div id="chart-box" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Limites de Tukey e conferência com as Partes 2 e 3</span>
+    <span class="badge badge-study">14 séries</span>
+  </div>
+  <div class="card-subtitle">
+    “Parte 2” compara com o catálogo da detecção de outliers. “Parte 3” chama <code>quartis()</code> e
+    <code>limites_outliers()</code> de <code>app/analysis/descritiva.py</code>{% if not data.parte3_integrada %}
+    (módulo ainda não integrado){% endif %}. As colunas Hazen mostram o que o boxplot automático do plotly.js calcularia.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>Q1</th>
+          <th>Q3</th>
+          <th>IQR</th>
+          <th>Q1 − 1,5×IQR</th>
+          <th>Q3 + 1,5×IQR</th>
+          <th>Bigodes</th>
+          <th>Outliers</th>
+          <th>Parte 2</th>
+          <th>Parte 3</th>
+          <th>Q1 / Q3 Hazen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.q1|num2 }}</td>
+          <td>{{ row.q3|num2 }}</td>
+          <td>{{ row.iqr|num2 }}</td>
+          <td>{{ row.lim_inf|num2 }}</td>
+          <td>{{ row.lim_sup|num2 }}</td>
+          <td>{{ row.bigode_inf|num2 }} – {{ row.bigode_sup|num2 }}</td>
+          <td>{{ row.n_outliers }}</td>
+          <td>
+            {% if row.parte2_confere %}<span class="badge badge-ok">✓ confere</span>
+            {% else %}<span class="badge badge-warn">diverge</span>{% endif %}
+          </td>
+          <td>
+            {% if row.parte3 == 'confere' %}<span class="badge badge-ok">✓ confere</span>
+            {% elif row.parte3 == 'não integrada' %}<span class="badge badge-aux">pendente</span>
+            {% else %}<span class="badge badge-warn">{{ row.parte3 }}</span>{% endif %}
+          </td>
+          <td>{{ row.q1_hazen|num2 }} / {{ row.q3_hazen|num2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="interpretation-box amber">
+  <h3>Limites conferidos com o boxplot</h3>
+  {% for paragraph in data.texts.limites %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>Comparação entre os times</h3>
+  {% for paragraph in data.texts.times %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Quadro-resumo: IQR × CV × assimetria</span>
+    <span class="badge badge-study">Parte 4</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>Mediana</th>
+          <th>IQR</th>
+          <th>IQR / s</th>
+          <th>CV (%)</th>
+          <th>CV robusto (%)</th>
+          <th>g1</th>
+          <th>Leitura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.mediana|num2 }}</td>
+          <td>{{ row.iqr|num2 }}</td>
+          <td>{{ row.iqr_sobre_dp|num2 }}</td>
+          <td>{{ row.cv|num2 }}</td>
+          <td>{{ row.cv_robusto|num2 }}</td>
+          <td>{{ row.g1|num2 }}</td>
+          <td>{{ row.leitura_curta }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Como as três medidas se articulam</h3>
+  {% for paragraph in data.texts.articulacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-faixas", {{ data.chart_faixas_json | safe }});
+  renderPlotlyChart("chart-box", {{ data.chart_box_json | safe }});
+</script>
+{% endblock %}

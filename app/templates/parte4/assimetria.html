@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Medidas: assimetria | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Medidas Descritivas · Forma da distribuição</div>
+  <h2>Assimetria por variável e time (Fisher-Pearson ajustado)</h2>
+  <p>
+    O g1 ajustado (<code>scipy.stats.skew</code>, <code>bias=False</code>) mede de que lado fica a cauda mais longa de cada série.
+    Celtics (74 jogos) e Pelicans (76 jogos) são avaliados em separado. O histograma com KDE e o boxplot
+    ficam lado a lado, e a escala log1p mostra o efeito da transformação.
+  </p>
+</div>
+
+<form method="get" action="{{ url_for('parte4.assimetria') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os times</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável:</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="escala">Escala:</label>
+    <select name="escala" id="escala" class="filter-select" data-autosubmit="true">
+      {% for key, label in data.escalas.items() %}
+      <option value="{{ key }}" {% if selected_escala == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Séries aproximadamente simétricas</div>
+    <div class="kpi-value">{{ data.kpis.simetricas }} / {{ data.kpis.n_series }}</div>
+    <div class="kpi-sub">|g1| &lt; 0,5</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Assimetria moderada</div>
+    <div class="kpi-value">{{ data.kpis.moderadas }}</div>
+    <div class="kpi-sub">0,5 ≤ |g1| &lt; 1</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Assimetria forte</div>
+    <div class="kpi-value">{{ data.kpis.fortes }}</div>
+    <div class="kpi-sub">|g1| ≥ 1</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Significativas a 5%</div>
+    <div class="kpi-value">{{ data.kpis.significativas }}</div>
+    <div class="kpi-sub">Teste de D'Agostino (skewtest)</div>
+  </div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Fórmula e justificativa</h3>
+  {% for paragraph in data.texts.formula %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Distribuição de {{ data.var_meta.label }}</span>
+    <span class="badge badge-aux">{{ data.escalas[data.escala] }}</span>
+  </div>
+  <div class="card-subtitle">
+    À esquerda, histograma normalizado em densidade com a KDE gaussiana (banda de Scott). À direita, boxplot com
+    os quartis lineares do pandas; a linha tracejada dentro da caixa é a média. Os círculos vermelhos são jogos fora de 1,5×IQR.
+  </div>
+  <div id="chart-dist" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Leitura da variável selecionada</h3>
+  {% for paragraph in data.texts.leitura %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Assimetria por variável e time</span>
+    <span class="badge badge-study">14 séries</span>
+  </div>
+  <div class="card-subtitle">
+    A linha em destaque é a variável do seletor. Bowley = (Q3 + Q1 − 2·Q2)/IQR usa só quartis; o g1 em log1p
+    mostra o efeito da transformação ln(1 + x).
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>g1</th>
+          <th>Direção</th>
+          <th>Intensidade</th>
+          <th>p (skewtest)</th>
+          <th>Média</th>
+          <th>Mediana</th>
+          <th>Média − mediana</th>
+          <th>Bowley</th>
+          <th>g1 em log1p</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td><strong>{{ row.g1|num2 }}</strong></td>
+          <td>{{ row.sentido }}</td>
+          <td>
+            {% if row.intensidade == 'aproximadamente simétrica' %}
+              <span class="badge badge-ok">{{ row.intensidade }}</span>
+            {% else %}
+              <span class="badge badge-warn">{{ row.intensidade }}</span>
+            {% endif %}
+          </td>
+          <td>{{ row.g1_p|num4 }}</td>
+          <td>{{ row.media|num2 }}</td>
+          <td>{{ row.mediana|num2 }}</td>
+          <td>{{ row.media_menos_mediana|num2 }}</td>
+          <td>{{ row.bowley|num2 }}</td>
+          <td>{{ row.g1_log|num2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Comparação entre variáveis e times</span>
+    <span class="badge badge-aux">g1</span>
+  </div>
+  <div class="card-subtitle">
+    Faixa verde: |g1| &lt; 0,5 (aproximadamente simétrica). Linhas tracejadas: limites de assimetria moderada (±0,5) e forte (±1).
+  </div>
+  <div id="chart-g1" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Comparação entre variáveis e times</h3>
+  {% for paragraph in data.texts.comparacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Média versus mediana</h3>
+  {% for paragraph in data.texts.media_mediana %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box amber">
+  <h3>Transformação log1p e zeros em roubos e tocos</h3>
+  {% for paragraph in data.texts.transformacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>Métodos robustos</h3>
+  {% for paragraph in data.texts.robustos %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-dist", {{ data.chart_dist_json | safe }});
+  renderPlotlyChart("chart-g1", {{ data.chart_g1_json | safe }});
+</script>
+{% endblock %}

@@ -29,7 +29,8 @@ projeto1/
 │   │   ├── __init__.py
 │   │   ├── preparacao.py           # Parte 1: Dicionário, Tratamentos, Especiais e Simulação MCAR/MAR
 │   │   ├── outliers.py             # Parte 2: Z-score, IQR, Grubbs, ECOD, k-NN, DBSCAN e LOF
-│   │   └── descritiva.py           # Parte 3: Estatística descritiva, Boxplot anotado e Barras (Z-score da liga)
+│   │   ├── descritiva.py           # Parte 3: Estatística descritiva, Boxplot anotado e Barras (Z-score da liga)
+│   │   └── dispersao.py            # Parte 4: Assimetria (g1), CV, IQR e Síntese geral
 │   ├── static/
 │   │   ├── css/style.css           # Identidade visual responsiva
 │   │   └── js/main.js              # Renderização Plotly e seletores dinâmicos
@@ -44,8 +45,13 @@ projeto1/
 │       │   └── ausentes.html       # 1.5 Teoria MCAR/MAR/MNAR e Simulação (Little e Fairclough)
 │       ├── parte2/
 │       │   └── outliers.html       # 2. Outliers univariados e jogos de prorrogação
-│       └── parte3/
-│           └── descritiva.html     # 3. Estatística descritiva, Boxplot anotado e Barras comparativas
+│       ├── parte3/
+│       │   └── descritiva.html     # 3. Estatística descritiva, Boxplot anotado e Barras comparativas
+│       └── parte4/
+│           ├── assimetria.html     # 4.1 Assimetria (Fisher-Pearson ajustado), histograma+KDE e log1p
+│           ├── cv.html             # 4.2 Coeficiente de variação, referência de Poisson e CV robusto
+│           ├── iqr.html            # 4.3 Q1, Q3, IQR e limites de Tukey conferidos com o boxplot
+│           └── sintese.html        # 4.4 Síntese e interpretação geral
 ├── data/
 │   ├── raw/
 │   │   └── stats_times_regular_final.csv  # Base bruta oficial (2238 linhas × 28 colunas, 30 times)
@@ -61,7 +67,8 @@ projeto1/
 ## Convenções Metodológicas Fixas
 
 - **Desvio padrão e variância amostrais:** Calculados com correção de Bessel (`ddof=1`).
-- **Quartis ($Q_1, Q_3$) e IQR:** Interpolação linear padrão (`pandas`/`numpy`), utilizada de modo idêntico nas tabelas e nos boxplots.
+- **Quartis ($Q_1, Q_3$) e IQR:** Interpolação linear padrão (`pandas`/`numpy`), utilizada de modo idêntico nas tabelas e nos boxplots. Os boxplots da Parte 4 recebem Q1, mediana, Q3 e bigodes já calculados, porque o `quartilemethod="linear"` do plotly.js interpola em p·n − 0,5 (Hazen), e não em (n − 1)·p.
+- **Assimetria:** Fisher-Pearson ajustado (`scipy.stats.skew(..., bias=False)`); |g1| < 0,5 é aproximadamente simétrica, 0,5–1 moderada e ≥ 1 forte.
 - **Critério de Outliers (Tukey):** Limites definidos por $Q_1 - 1{,}5 \times \text{IQR}$ e $Q_3 + 1{,}5 \times \text{IQR}$.
 - **Coeficiente de Variação (CV):** Expresso em percentual com `ddof=1`.
 - **Fonte única de dados limpos:** Todas as análises consomem `load_clean(team=None)` em `app/data_loader.py` a partir de `data/processed/jogos_limpo.csv`.

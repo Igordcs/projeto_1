@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Medidas: coeficiente de variação | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Medidas Descritivas · Dispersão relativa</div>
+  <h2>Coeficiente de variação (CV) por variável e time</h2>
+  <p>
+    CV (%) = desvio padrão amostral (ddof = 1) / média × 100. O CV permite comparar a oscilação de variáveis com
+    escalas diferentes, mas só vale em escala de razão e com a média longe de zero, condição que roubos e tocos
+    testam no limite.
+  </p>
+</div>
+
+<form method="get" action="{{ url_for('parte4.cv') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os times</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável:</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar</button>
+</form>
+
+<div class="kpi-grid">
+  {% for r in data.sel %}
+  <div class="kpi-card">
+    <div class="kpi-label">CV — {{ r.time }}</div>
+    <div class="kpi-value">{{ r.cv|num2 }}%</div>
+    <div class="kpi-sub">{{ data.var_meta.short_label }} · média {{ r.media|num2 }}, s = {{ r.dp|num2 }}</div>
+  </div>
+  {% endfor %}
+  <div class="kpi-card">
+    <div class="kpi-label">Série mais estável</div>
+    <div class="kpi-value" style="font-size:1.35rem;">{{ data.kpis.estavel.label }} · {{ data.kpis.estavel.time_short }}</div>
+    <div class="kpi-sub">CV {{ data.kpis.estavel.cv|num2 }}%</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Série mais volátil</div>
+    <div class="kpi-value" style="font-size:1.35rem;">{{ data.kpis.volatil.label }} · {{ data.kpis.volatil.time_short }}</div>
+    <div class="kpi-sub">CV {{ data.kpis.volatil.cv|num2 }}%</div>
+  </div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Definição e condições de validade</h3>
+  {% for paragraph in data.texts.validade %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>Leitura da variável selecionada</h3>
+  {% for paragraph in data.texts.leitura %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Quadro-resumo: variáveis × times</span>
+    <span class="badge badge-study">14 séries</span>
+  </div>
+  <div class="card-subtitle">
+    CV robusto = IQR / mediana × 100. CV Poisson = 100/√média, o CV esperado de uma contagem pura com a mesma média.
+    Faixas: &lt; 15% baixo, 15–30% moderado, &gt; 30% alto.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>Média</th>
+          <th>Desvio (ddof = 1)</th>
+          <th>CV (%)</th>
+          <th>Nível</th>
+          <th>CV robusto (%)</th>
+          <th>CV Poisson (%)</th>
+          <th>s² / média</th>
+          <th>g1</th>
+          <th>Zeros</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.media|num2 }}</td>
+          <td>{{ row.dp|num2 }}</td>
+          <td><strong>{{ row.cv|num2 }}</strong></td>
+          <td>
+            {% if row.nivel_cv == 'alto' %}<span class="badge badge-warn">alto</span>
+            {% elif row.nivel_cv == 'baixo' %}<span class="badge badge-ok">baixo</span>
+            {% else %}<span class="badge badge-aux">moderado</span>{% endif %}
+          </td>
+          <td>{{ row.cv_robusto|num2 }}</td>
+          <td>{{ row.cv_poisson|num2 }}</td>
+          <td>{{ row.dispersao_poisson|num2 }}</td>
+          <td>{{ row.g1|num2 }}</td>
+          <td>{{ row.zeros }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>CV por variável e time</span>
+    <span class="badge badge-aux">%</span>
+  </div>
+  <div class="card-subtitle">Linhas tracejadas nas fronteiras de 15% e 30%.</div>
+  <div id="chart-cv" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Time mais consistente e mais irregular por variável</span>
+    <span class="badge badge-study">menor CV = mais consistente</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Mais consistente</th>
+          <th>CV (%)</th>
+          <th>Mais irregular</th>
+          <th>CV (%)</th>
+          <th>Diferença (p.p.)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.consistencia_rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.consistente }}</td>
+          <td>{{ row.cv_menor|num2 }}</td>
+          <td>{{ row.irregular }}</td>
+          <td>{{ row.cv_maior|num2 }}</td>
+          <td>{{ row.diferenca|num2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Consistência entre os times</h3>
+  {% for paragraph in data.texts.consistencia %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Média × CV e a referência de Poisson</span>
+    <span class="badge badge-warn">CV inflado em médias baixas</span>
+  </div>
+  <div class="card-subtitle">
+    Cada ponto é uma série. A curva pontilhada é o CV de uma contagem de Poisson: pontos perto dela variam
+    o que se espera de uma contagem com aquela média.
+  </div>
+  <div id="chart-media-cv" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box amber">
+  <h3>Por que o CV de roubos e tocos é inflado</h3>
+  {% for paragraph in data.texts.inflado %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Escalas diferentes: por que o desvio bruto não serve</h3>
+  {% for paragraph in data.texts.escalas %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>CV, desvio e assimetria</h3>
+  {% for paragraph in data.texts.confronto %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Alternativa robusta: IQR / mediana</h3>
+  {% for paragraph in data.texts.robusto %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-cv", {{ data.chart_cv_json | safe }});
+  renderPlotlyChart("chart-media-cv", {{ data.chart_media_cv_json | safe }});
+</script>
+{% endblock %}

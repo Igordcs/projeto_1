@@ -7,6 +7,13 @@ from __future__ import annotations
 from flask import Blueprint, render_template, request
 
 from app.analysis.descritiva import MEASURE_CHOICES, get_descritiva_analysis
+from app.analysis.dispersao import (
+    ESCALAS,
+    get_assimetria_analysis,
+    get_cv_analysis,
+    get_iqr_analysis,
+    get_sintese_analysis,
+)
 from app.analysis.outliers import METHOD_CHOICES, get_outliers_analysis
 from app.analysis.preparacao import (
     get_data_dictionary,
@@ -21,6 +28,7 @@ main_bp = Blueprint("main", __name__)
 parte1_bp = Blueprint("parte1", __name__)
 parte2_bp = Blueprint("parte2", __name__)
 parte3_bp = Blueprint("parte3", __name__)
+parte4_bp = Blueprint("parte4", __name__)
 
 
 def _get_selected_team() -> str:
@@ -54,6 +62,11 @@ def _get_selected_variable() -> str:
         "bolas3_convertidas",
     }
     return var if var in valid else "pontos"
+
+
+def _get_selected_scale() -> str:
+    escala = request.args.get("escala", "bruta").strip()
+    return escala if escala in ESCALAS else "bruta"
 
 
 @main_bp.route("/")
@@ -216,4 +229,72 @@ def descritiva():
         selected_var=var,
         selected_medida=medida,
         active_page="descritiva",
+    )
+
+
+@parte4_bp.route("/assimetria")
+@parte4_bp.route("/parte4/assimetria")
+def assimetria():
+    """Assimetria (Fisher-Pearson ajustado) por variável e time."""
+    team = _get_selected_team()
+    var = _get_selected_variable()
+    escala = _get_selected_scale()
+    data = get_assimetria_analysis(
+        team=None if team == "todos" else team,
+        variable=var,
+        escala=escala,
+    )
+    return render_template(
+        "parte4/assimetria.html",
+        data=data,
+        selected_team=team,
+        selected_var=var,
+        selected_escala=escala,
+        active_page="assimetria",
+    )
+
+
+@parte4_bp.route("/cv")
+@parte4_bp.route("/parte4/cv")
+def cv():
+    """Coeficiente de variação (%) por variável e time."""
+    team = _get_selected_team()
+    var = _get_selected_variable()
+    data = get_cv_analysis(team=None if team == "todos" else team, variable=var)
+    return render_template(
+        "parte4/cv.html",
+        data=data,
+        selected_team=team,
+        selected_var=var,
+        active_page="cv",
+    )
+
+
+@parte4_bp.route("/iqr")
+@parte4_bp.route("/parte4/iqr")
+def iqr():
+    """Amplitude interquartil, limites de Tukey e conferência com o boxplot."""
+    team = _get_selected_team()
+    var = _get_selected_variable()
+    data = get_iqr_analysis(team=None if team == "todos" else team, variable=var)
+    return render_template(
+        "parte4/iqr.html",
+        data=data,
+        selected_team=team,
+        selected_var=var,
+        active_page="iqr",
+    )
+
+
+@parte4_bp.route("/sintese")
+@parte4_bp.route("/parte4/sintese")
+def sintese():
+    """Síntese e interpretação geral do sistema."""
+    team = _get_selected_team()
+    data = get_sintese_analysis(team=None if team == "todos" else team)
+    return render_template(
+        "parte4/sintese.html",
+        data=data,
+        selected_team=team,
+        active_page="sintese",
     )
