@@ -324,7 +324,6 @@ def _compute_mode_details(
     moda_texto = f"{modes_joined} ({moda_tipo}; {max_freq} jogos = {_br(pct, 1)}%)"
     moda_curta = f"{modes_joined} ({max_freq}x)"
 
-    # Para PTS (quase contínua), adicionar classe modal de 5 pontos e pico KDE
     classe_modal_pts = None
     classe_modal_freq = None
     classe_modal_pct = None
@@ -432,7 +431,6 @@ def _summarize_single(
     out_info = limites_outliers(s, k=1.5)
     mode_info = _compute_mode_details(s, var_name=var_key)
 
-    # Identificar jogos outliers (data/adversário/valor) quando há colunas de partida
     outlier_games: List[Dict[str, Any]] = []
     if has_game_cols and df_sub is not None:
         df_reset = df_sub.reset_index(drop=True)
@@ -498,7 +496,6 @@ def _summarize_single(
         else "Nenhum (0)"
     )
 
-    # Padronização Z-score usando a referência da liga toda (30 times, 2238 linhas)
     league_ref = get_league_reference().get(var_key)
     if league_ref and league_ref["dp"] > 0:
         liga_media = league_ref["media"]
@@ -600,7 +597,6 @@ def resumo_descritivo(
     4. `resumo_descritivo(team=None, variavel=None)` -> retorna `list[dict]` com os resumos das 7 variáveis
        para cada equipe do recorte (`Boston Celtics` e `New Orleans Pelicans`).
     """
-    # Caso `dados` seja string, pode ser o nome da variável ou o nome do time
     if isinstance(dados, str):
         token = dados.strip()
         if token in STUDY_VARIABLES:
@@ -610,11 +606,9 @@ def resumo_descritivo(
             team = token
             dados = None
 
-    # Caso `dados` seja uma Série/array 1D direto
     if dados is not None and not isinstance(dados, pd.DataFrame):
         return _summarize_single(dados, variavel=variavel, team_label=team)
 
-    # Caso `dados` seja um DataFrame fornecido pelo chamador
     if isinstance(dados, pd.DataFrame):
         df = dados.copy()
         if (
@@ -634,7 +628,6 @@ def resumo_descritivo(
                 ]
             return _summarize_single(df, variavel=variavel, team_label=team)
 
-        # Sem variável específica: retorna lista para as 7 variáveis por time presente no DataFrame
         results: List[Dict[str, Any]] = []
         teams_present = (
             [t for t in TEAMS if (df["time"] == t).any()]
@@ -651,7 +644,6 @@ def resumo_descritivo(
                 )
         return results
 
-    # Caso `dados is None`: carregar base limpa via `load_clean`
     df_all = load_clean()
     selected_teams = (
         list(TEAMS)
@@ -677,20 +669,32 @@ def resumo_descritivo(
     return summaries
 
 
-def _plotly_to_json(fig: go.Figure, top: int = 75) -> str:
-    """Serializa figura Plotly com identidade visual padronizada do sistema."""
+def _plotly_to_json(
+    fig: go.Figure,
+    top: int = 80,
+    bottom: int = 115,
+    legend_y: float = -0.18,
+) -> str:
+    """
+    Serializa figura Plotly com legenda posicionada na base (abaixo do eixo X),
+    garantindo que título principal, subtítulos de painéis e legenda nunca se sobreponham.
+    """
     fig.update_layout(
         template="plotly_white",
         font=dict(family="Inter, system-ui, sans-serif", size=12, color="#1E293B"),
-        title_font=dict(size=15, color="#0F172A"),
-        margin=dict(l=60, r=35, t=top, b=60),
+        title_font=dict(size=14, color="#0F172A"),
+        title=dict(y=0.96, x=0.01, xanchor="left", yanchor="top"),
+        margin=dict(l=65, r=35, t=top, b=bottom),
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1.0,
-            bgcolor="rgba(255,255,255,0.9)",
+            yanchor="top",
+            y=legend_y,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(248,250,252,0.95)",
+            bordercolor="#E2E8F0",
+            borderwidth=1,
+            font=dict(size=11.5),
         ),
     )
     return json.dumps(fig.to_plotly_json(), default=str)
@@ -713,7 +717,6 @@ def _stagger_y(
             prev_y = ordered[i - 1]["y_text"]
             item["y_text"] = max(float(item["y"]), prev_y + min_gap)
 
-    # Passagem reversa leve para centralizar o bloco caso tenha subido demais
     shift = (ordered[-1]["y_text"] - float(ordered[-1]["y"])) * 0.35
     if shift > 0 and len(ordered) > 2:
         for item in ordered:
@@ -734,7 +737,7 @@ def _build_annotated_boxplot(
     - Outliers superiores e inferiores (com data e adversário)
     - Limites adjacentes dos bigodes e Cercas de Tukey (Q1 - 1,5*IQR e Q3 + 1,5*IQR)
     - Q3, Média, Mediana (Q2), Moda(s) e Q1
-    Com todos os elementos identificados na legenda interativa.
+    Com todos os elementos identificados na legenda interativa posicionada na base.
     """
     n_cols = len(summaries_var)
     fig = make_subplots(
@@ -743,11 +746,11 @@ def _build_annotated_boxplot(
         shared_yaxes=True,
         horizontal_spacing=0.10 if n_cols > 1 else 0.05,
         subplot_titles=[
-            f"{s['time']} (n = {s['n']} jogos)" for s in summaries_var
+            f"<b>{s['time']}</b> (n = {s['n']} jogos | IQR = {_br(s['iqr'])} {var_meta['unit']})"
+            for s in summaries_var
         ],
     )
 
-    # Calcular escala vertical global para espaçamento anti-colisão das anotações
     all_y: List[float] = []
     for s in summaries_var:
         all_y.extend(s["valores"])
@@ -755,7 +758,7 @@ def _build_annotated_boxplot(
     y_min_global = min(all_y) if all_y else 0.0
     y_max_global = max(all_y) if all_y else 100.0
     y_span = max(y_max_global - y_min_global, 5.0)
-    min_gap = y_span * 0.058
+    min_gap = y_span * 0.062
 
     legend_shown = {
         "mean": False,
@@ -781,7 +784,6 @@ def _build_annotated_boxplot(
             else "rgba(12, 35, 64, 0.18)"
         )
 
-        # Filtrar valores internos às cercas para o traço principal e sobrepor outliers separados
         vals = np.asarray(s["valores"], dtype=float)
         cerca_inf = float(s["cerca_inferior"])
         cerca_sup = float(s["cerca_superior"])
@@ -791,7 +793,7 @@ def _build_annotated_boxplot(
             go.Box(
                 x=[0.0] * len(vals),
                 y=vals.tolist(),
-                name=f"Caixa e Bigodes — {s['time_short']}",
+                name=f"Caixa (Q1–Q3) — {s['time_short']}",
                 marker_color=box_color,
                 line=dict(color=box_color, width=2.2),
                 fillcolor=fill_color,
@@ -815,7 +817,7 @@ def _build_annotated_boxplot(
                     x=[-0.24, 0.24],
                     y=[fence_val, fence_val],
                     mode="lines",
-                    name="Cercas de Tukey (Q1 − 1,5×IQR ; Q3 + 1,5×IQR)",
+                    name="Cercas de Tukey (1,5×IQR)",
                     legendgroup="fences",
                     showlegend=not legend_shown["fences"],
                     line=dict(color="#DC2626", width=1.8, dash="dot"),
@@ -954,7 +956,11 @@ def _build_annotated_boxplot(
         outliers_inf = [g for g in s["outliers"] if g["tipo"] == "inferior"]
 
         if outliers_sup:
-            x_sup = np.linspace(-0.06, 0.06, len(outliers_sup)).tolist() if len(outliers_sup) > 1 else [0.0]
+            x_sup = (
+                np.linspace(-0.06, 0.06, len(outliers_sup)).tolist()
+                if len(outliers_sup) > 1
+                else [0.0]
+            )
             fig.add_trace(
                 go.Scatter(
                     x=x_sup,
@@ -969,7 +975,10 @@ def _build_annotated_boxplot(
                         color="#DC2626",
                         line=dict(width=1.5, color="#7F1D1D"),
                     ),
-                    customdata=[[g["data"], g["adversario"], g["confronto"], g["minutos"]] for g in outliers_sup],
+                    customdata=[
+                        [g["data"], g["adversario"], g["confronto"], g["minutos"]]
+                        for g in outliers_sup
+                    ],
                     hovertemplate=(
                         f"<b>Outlier Superior — {s['time_short']}</b><br>"
                         "Data: %{customdata[0]} (%{customdata[2]})<br>"
@@ -983,7 +992,11 @@ def _build_annotated_boxplot(
             legend_shown["out_sup"] = True
 
         if outliers_inf:
-            x_inf = np.linspace(-0.06, 0.06, len(outliers_inf)).tolist() if len(outliers_inf) > 1 else [0.0]
+            x_inf = (
+                np.linspace(-0.06, 0.06, len(outliers_inf)).tolist()
+                if len(outliers_inf) > 1
+                else [0.0]
+            )
             fig.add_trace(
                 go.Scatter(
                     x=x_inf,
@@ -998,7 +1011,10 @@ def _build_annotated_boxplot(
                         color="#2563EB",
                         line=dict(width=1.5, color="#1E3A8A"),
                     ),
-                    customdata=[[g["data"], g["adversario"], g["confronto"], g["minutos"]] for g in outliers_inf],
+                    customdata=[
+                        [g["data"], g["adversario"], g["confronto"], g["minutos"]]
+                        for g in outliers_inf
+                    ],
                     hovertemplate=(
                         f"<b>Outlier Inferior — {s['time_short']}</b><br>"
                         "Data: %{customdata[0]} (%{customdata[2]})<br>"
@@ -1071,7 +1087,7 @@ def _build_annotated_boxplot(
             fig.add_annotation(
                 x=item["x_target"],
                 y=item["y"],
-                ax=0.36,
+                ax=0.35,
                 ay=item["y_text"],
                 xref=xref,
                 yref=yref,
@@ -1142,12 +1158,12 @@ def _build_annotated_boxplot(
                 }
             )
 
-        left_staggered = _stagger_y(left_notes, min_gap=min_gap * 1.15)
+        left_staggered = _stagger_y(left_notes, min_gap=min_gap * 1.2)
         for item in left_staggered:
             fig.add_annotation(
                 x=item["x_target"],
                 y=item["y"],
-                ax=-0.34,
+                ax=-0.33,
                 ay=item["y_text"],
                 xref=xref,
                 yref=yref,
@@ -1173,26 +1189,26 @@ def _build_annotated_boxplot(
             showticklabels=False,
             zeroline=False,
             showgrid=False,
-            title_text=f"{s['time']} (IQR = {_br(s['iqr'])} {var_meta['unit']})",
+            title_text=f"{s['time']}",
             row=1,
             col=col_idx,
         )
 
     fig.update_yaxes(
         title_text=f"{var_meta['label']} ({var_meta['unit']})",
-        range=[y_min_global - y_span * 0.14, y_max_global + y_span * 0.14],
+        range=[y_min_global - y_span * 0.20, y_max_global + y_span * 0.24],
         row=1,
         col=1,
     )
     fig.update_layout(
-        title=(
+        title_text=(
             f"Boxplot Anotado de {var_meta['label']} — Quartis (Q1, Mediana, Q3), Média, Moda, "
             "Limites e Outliers (1,5×IQR)"
         ),
-        height=560,
+        height=610,
         showlegend=True,
     )
-    return _plotly_to_json(fig, top=95)
+    return _plotly_to_json(fig, top=85, bottom=125, legend_y=-0.12)
 
 
 def _build_zscore_bars_chart(
@@ -1260,6 +1276,7 @@ def _build_zscore_bars_chart(
                 marker_color=color,
                 text=text_labels,
                 textposition="outside",
+                textfont=dict(size=11),
                 customdata=custom_rows,
                 hovertemplate=(
                     f"<b>{trace_name}</b><br>"
@@ -1271,32 +1288,40 @@ def _build_zscore_bars_chart(
             )
         )
 
+    # Linha de referência z = 0 na legenda (sem texto sobreposto às barras!)
     fig.add_hline(
         y=0.0,
         line_dash="dash",
         line_color="#0F172A",
         line_width=1.8,
-        annotation_text="Média de Referência da Liga NBA (30 times, N = 2.238 jogos): z = 0,00",
-        annotation_position="top left",
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode="lines",
+            name="Média de Referência da Liga NBA (30 times, N = 2.238): z = 0,00",
+            line=dict(color="#0F172A", width=2, dash="dash"),
+        )
     )
 
     medida_titulo = {
-        "media": "Média Amostral Padronizada: z = (x̄_time − μ_liga) / σ_liga",
+        "media": "Média Padronizada: z = (x̄_time − μ_liga) / σ_liga",
         "mediana": "Mediana Padronizada: z = (Mediana_time − μ_liga) / σ_liga",
         "ambas": "Média e Mediana Padronizadas pela Liga (30 times, N = 2.238)",
     }[medida]
 
     fig.update_layout(
-        title=(
-            f"Comparação Conjunta das 7 Variáveis na Mesma Escala (Z-score da Liga) — {medida_titulo}"
+        title_text=(
+            f"As 7 Variáveis na Mesma Escala (Z-score da Liga) — {medida_titulo}"
         ),
         xaxis_title="Variáveis do Estudo (destaque em negrito na variável selecionada)",
-        yaxis_title="Escore Padronizado Z (desvios-padrão da liga NBA, adimensional)",
+        yaxis_title="Escore Padronizado Z (σ da Liga)",
         barmode="group",
-        yaxis=dict(range=[-0.85, 0.85]),
-        height=470,
+        yaxis=dict(range=[-0.88, 0.88]),
+        height=490,
     )
-    return _plotly_to_json(fig, top=85)
+    return _plotly_to_json(fig, top=75, bottom=115, legend_y=-0.18)
 
 
 def _build_raw_bars_chart(
@@ -1307,7 +1332,7 @@ def _build_raw_bars_chart(
     """
     Constrói o Gráfico de Barras Comparativo em Unidades Originais:
     - Painel 1: Comparação direta Celtics × Pelicans × Liga NBA na variável selecionada
-      (mostrando Média ± DP e Mediana com Q1–Q3).
+      (mostrando Média ± DP e Mediana).
     - Painel 2: As 7 variáveis na medida selecionada em unidades brutas, evidenciando a
       diferença de ordem de grandeza (PTS ~ 115 vs BLK ~ 5) que motiva o uso do Z-score.
     """
@@ -1327,14 +1352,18 @@ def _build_raw_bars_chart(
         rows=1,
         cols=2,
         subplot_titles=(
-            f"Foco em {var_meta['short_label']} ({var_meta['unit']}): Média vs. Mediana",
-            f"As 7 Variáveis em Unidades Brutas ({med_label}) — Escalas Distintas",
+            f"<b>{var_meta['short_label']} ({var_meta['unit']})</b>: Média (±1 DP) vs. Mediana",
+            f"<b>As 7 Variáveis em Unidades Brutas ({med_label})</b>",
         ),
-        horizontal_spacing=0.14,
+        horizontal_spacing=0.16,
     )
 
-    # Painel 1: Celtics vs Pelicans vs Liga na variável selecionada (Média e Mediana)
-    groups_x = ["Boston Celtics (n=74)", "New Orleans Pelicans (n=76)", "Liga NBA (30 times, N=2238)"]
+    # Painel 1: Rótulos horizontais em 2 linhas para não inclinar sobre o Painel 2
+    groups_x = [
+        "Boston Celtics<br>(n = 74)",
+        "New Orleans Pelicans<br>(n = 76)",
+        "Liga NBA<br>(30 times, N = 2.238)",
+    ]
     means_y = [s_bos["media"], s_nop["media"], league_ref["media"]]
     stds_y = [s_bos["dp"], s_nop["dp"], league_ref["dp"]]
     medians_y = [s_bos["mediana"], s_nop["mediana"], league_ref["mediana"]]
@@ -1343,11 +1372,13 @@ def _build_raw_bars_chart(
         go.Bar(
             x=groups_x,
             y=means_y,
-            name=f"Média ({var_meta['unit']})",
+            name=f"Média ± 1 DP ({var_meta['unit']})",
             marker_color="#007A33",
             text=[_br(v, 2) for v in means_y],
-            textposition="auto",
-            error_y=dict(type="data", array=stds_y, visible=True, color="#1E293B"),
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(color="#FFFFFF", size=11),
+            error_y=dict(type="data", array=stds_y, visible=True, color="#1E293B", thickness=1.8, width=5),
             hovertemplate=(
                 "<b>%{x}</b><br>Média: <b>%{y:.2f} "
                 + var_meta["unit"]
@@ -1364,7 +1395,9 @@ def _build_raw_bars_chart(
             name=f"Mediana ({var_meta['unit']})",
             marker_color="#0C2340",
             text=[_br(v, 2) for v in medians_y],
-            textposition="auto",
+            textposition="inside",
+            insidetextanchor="middle",
+            textfont=dict(color="#FFFFFF", size=11),
             hovertemplate=(
                 "<b>%{x}</b><br>Mediana (Q2): <b>%{y:.2f} "
                 + var_meta["unit"]
@@ -1391,6 +1424,7 @@ def _build_raw_bars_chart(
             marker_color="#007A33",
             text=[_br(v, 1) for v in bos_raw],
             textposition="outside",
+            textfont=dict(size=10),
             hovertemplate="<b>Boston Celtics</b><br>%{x}: <b>%{y:.2f}</b><extra></extra>",
         ),
         row=1,
@@ -1404,30 +1438,37 @@ def _build_raw_bars_chart(
             marker_color="#C8102E",
             text=[_br(v, 1) for v in nop_raw],
             textposition="outside",
+            textfont=dict(size=10),
             hovertemplate="<b>New Orleans Pelicans</b><br>%{x}: <b>%{y:.2f}</b><extra></extra>",
         ),
         row=1,
         col=2,
     )
 
-    fig.update_xaxes(title_text="Recorte Comparado", row=1, col=1)
-    fig.update_yaxes(title_text=f"{var_meta['short_label']} ({var_meta['unit']})", row=1, col=1)
-    fig.update_xaxes(title_text="7 Variáveis do Estudo", row=1, col=2)
+    max_left = max(m + s for m, s in zip(means_y, stds_y))
+    fig.update_xaxes(title_text="Recorte Comparado", tickangle=0, row=1, col=1)
     fig.update_yaxes(
-        title_text="Valor em Unidade Nativa (Escalas Heterogêneas)",
-        range=[0, max(bos_raw + nop_raw) * 1.18],
+        title_text=f"{var_meta['short_label']} ({var_meta['unit']})",
+        range=[0, max_left * 1.16],
+        row=1,
+        col=1,
+    )
+    fig.update_xaxes(title_text="7 Variáveis do Estudo", tickangle=-18, row=1, col=2)
+    fig.update_yaxes(
+        title_text="Unidade Nativa (Escalas Distintas)",
+        range=[0, max(bos_raw + nop_raw) * 1.22],
         row=1,
         col=2,
     )
     fig.update_layout(
-        title=(
-            f"Comparação em Unidades Originais: Detalhe de {var_meta['label']} (±1 DP) "
-            "vs. Disparidade de Escala Bruta entre as 7 Variáveis"
+        title_text=(
+            f"Unidades Originais: Detalhe de {var_meta['label']} vs. Disparidade de Escala Bruta das 7 Variáveis"
         ),
         barmode="group",
-        height=450,
+        bargap=0.22,
+        height=500,
     )
-    return _plotly_to_json(fig, top=85)
+    return _plotly_to_json(fig, top=85, bottom=120, legend_y=-0.20)
 
 
 def _build_variable_interpretations(
@@ -1587,11 +1628,9 @@ def get_descritiva_analysis(
 
     var_meta = STUDY_VARIABLES[variable]
 
-    # Resumos completos das 14 séries (7 variáveis × 2 times)
     all_summaries: List[Dict[str, Any]] = resumo_descritivo(team=None, variavel=None)  # type: ignore[assignment]
     by_team_var = {(s["time"], s["variavel"]): s for s in all_summaries}
 
-    # Filtrar conforme o seletor de time para a tabela principal e para o boxplot
     if team and team in TEAMS:
         selected_teams = [team]
     else:
@@ -1600,13 +1639,11 @@ def get_descritiva_analysis(
     table_rows = [s for s in all_summaries if s["time"] in selected_teams]
     summaries_selected_var = [by_team_var[(t, variable)] for t in selected_teams]
 
-    # Comparativo direto Celtics x Pelicans x Liga na variável selecionada
     s_bos = by_team_var[("Boston Celtics", variable)]
     s_nop = by_team_var[("New Orleans Pelicans", variable)]
     league_ref_all = get_league_reference()
     l_ref = league_ref_all[variable]
 
-    # Tabela de padronização Z-score das 7 variáveis
     zscore_table = []
     for k, meta in STUDY_VARIABLES.items():
         b = by_team_var[("Boston Celtics", k)]
@@ -1635,7 +1672,6 @@ def get_descritiva_analysis(
             }
         )
 
-    # Tabela de modas e multimodalidade das 7 variáveis
     modes_table = []
     for k, meta in STUDY_VARIABLES.items():
         b = by_team_var[("Boston Celtics", k)]
@@ -1686,4 +1722,3 @@ def get_descritiva_analysis(
         "chart_bars_zscore_json": chart_bars_zscore_json,
         "chart_bars_raw_json": chart_bars_raw_json,
     }
-

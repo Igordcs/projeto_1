@@ -196,9 +196,9 @@ def outliers():
     )
 
 
-@parte3_bp.route("/descritiva")
-@parte3_bp.route("/parte3/descritiva")
 @parte3_bp.route("/estatistica-descritiva")
+@parte3_bp.route("/parte3/descritiva")
+@parte3_bp.route("/descritiva")
 def descritiva():
     """(ii) e (iii) Estatística descritiva univariada, boxplot anotado e barras comparativas."""
     team = _get_selected_team()
