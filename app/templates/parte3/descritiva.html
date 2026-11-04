@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+{% block title %}Estatística Descritiva, Boxplot e Barras | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Parte 3 · Estatística Descritiva Univariada e Gráficos Comparativos</div>
+  <h2>Estatística Descritiva, Boxplot Anotado e Barras Comparativas (Celtics × Pelicans)</h2>
+  <p>
+    Análise descritiva completa das <strong>7 variáveis do estudo</strong> por equipe —
+    <strong>Boston Celtics (n = 74)</strong> e <strong>New Orleans Pelicans (n = 76)</strong> —
+    com cálculo de posição, dispersão (<code>ddof=1</code>), quartis por interpolação linear, outliers pelo critério de Tukey
+    (<code>1,5×IQR</code>), tratamento de multimodalidade, <strong>boxplot anotado</strong> e <strong>gráficos de barras padronizados via Z-score</strong>
+    pela referência completa da liga (30 equipes, 2.238 partidas).
+  </p>
+</div>
+
+<!-- Barra de Seletores Interativos -->
+<form method="get" action="{{ url_for('parte3.descritiva') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (Comparação Lado a Lado)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74 jogos)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76 jogos)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável em Foco:</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="medida">Medida nos Gráficos de Barras:</label>
+    <select name="medida" id="medida" class="filter-select" data-autosubmit="true">
+      {% for choice in data.measure_choices %}
+      <option value="{{ choice.id }}" {% if selected_medida == choice.id %}selected{% endif %}>{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar Análise</button>
+</form>
+
+<!-- KPIs da Variável Selecionada -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Boston Celtics · {{ data.var_meta.short_label }}</div>
+    <div class="kpi-value" style="color: var(--celtics-green);">
+      {{ data.bos.media|num2 }} <small style="font-size:0.82rem; font-weight:600;">(Med: {{ data.bos.mediana|num2 }})</small>
+    </div>
+    <div class="kpi-sub">
+      DP = {{ data.bos.dp|num2 }} · Variância = {{ data.bos.variancia|num2 }} · CV = {{ data.bos.cv|num2 }}%
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">New Orleans Pelicans · {{ data.var_meta.short_label }}</div>
+    <div class="kpi-value" style="color: var(--pelicans-red);">
+      {{ data.nop.media|num2 }} <small style="font-size:0.82rem; font-weight:600;">(Med: {{ data.nop.mediana|num2 }})</small>
+    </div>
+    <div class="kpi-sub">
+      DP = {{ data.nop.dp|num2 }} · Variância = {{ data.nop.variancia|num2 }} · CV = {{ data.nop.cv|num2 }}%
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Modas em {{ data.var_meta.short_label }}</div>
+    <div class="kpi-value" style="font-size: 1.22rem;">
+      BOS: {{ data.bos.modes_joined }} | NOP: {{ data.nop.modes_joined }}
+    </div>
+    <div class="kpi-sub">
+      Celtics: {{ data.bos.moda_tipo }} ({{ data.bos.moda_freq }}x) · Pelicans: {{ data.nop.moda_tipo }} ({{ data.nop.moda_freq }}x)
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Z-score na Liga (30 Times, N=2.238)</div>
+    <div class="kpi-value" style="font-size: 1.25rem;">
+      BOS: {{ "%+.2f"|format(data.bos.z_media_liga)|replace(".", ",") }}σ | NOP: {{ "%+.2f"|format(data.nop.z_media_liga)|replace(".", ",") }}σ
+    </div>
+    <div class="kpi-sub">
+      Ref. Liga: μ = {{ data.liga.media|num2 }} ± {{ data.liga.dp|num2 }} {{ data.var_meta.unit }}
+    </div>
+  </div>
+</div>
+
+<!-- Interpretação Crítica em Destaque da Variável Selecionada -->
+<div class="interpretation-box">
+  <h3>Interpretação Crítica em Foco: {{ data.var_meta.label }} — Boston Celtics vs. New Orleans Pelicans</h3>
+  <p>{{ data.interpretation_selected.contexto_tatico }}</p>
+  <p><strong>Comportamento Modal e Forma da Distribuição:</strong> {{ data.interpretation_selected.criterio_moda }}</p>
+</div>
+
+<!-- 1. Tabela Principal de Medidas Descritivas (7 Variáveis por Time) -->
+<div class="card">
+  <div class="card-title">
+    <span>1. Tabela Completa de Estatística Descritiva por Variável e Time ({{ data.table_rows|length }} séries exibidas)</span>
+    <div>
+      <span class="badge badge-study">ddof = 1</span>
+      <span class="badge badge-derived">Quartis Lineares · Outliers 1,5×IQR</span>
+    </div>
+  </div>
+  <div class="card-subtitle">
+    Medidas calculadas sobre <code>jogos_limpo.csv</code> para as 7 variáveis do estudo. A variável selecionada (<strong>{{ data.var_meta.label }}</strong>)
+    aparece destacada em verde. Nas colunas de outliers, <code>↑</code> indica outlier superior ($> Q_3 + 1{,}5\times\text{IQR}$) e <code>↓</code> indica outlier inferior ($< Q_1 - 1{,}5\times\text{IQR}$).
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>n</th>
+          <th>Média</th>
+          <th>Mediana</th>
+          <th>Moda (Tipo / Freq.)</th>
+          <th>Mín</th>
+          <th>Máx</th>
+          <th>Ampl.</th>
+          <th>DP (s)</th>
+          <th>Variância (s²)</th>
+          <th>CV (%)</th>
+          <th>Q1</th>
+          <th>Q3</th>
+          <th>IQR [Cercas 1,5×IQR]</th>
+          <th>Nº Out.</th>
+          <th>Quais são os Outliers (Data / Adversário / Valor)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data.table_rows %}
+        <tr class="{% if r.variavel == selected_var %}highlight-study{% endif %}">
+          <td><strong>{{ r.short_label }}</strong><br><small><code>{{ r.original }}</code> ({{ r.unit }})</small></td>
+          <td>
+            <strong style="color: {% if r.time == 'Boston Celtics' %}var(--celtics-green){% else %}var(--pelicans-red){% endif %};">
+              {{ r.time_short }}
+            </strong>
+          </td>
+          <td>{{ r.n }}</td>
+          <td><strong>{{ r.media|num2 }}</strong></td>
+          <td><strong>{{ r.mediana|num2 }}</strong></td>
+          <td>
+            <strong>{{ r.modes_joined }}</strong>
+            {% if r.is_multimodal %}
+              <span class="badge badge-warn">{{ r.moda_tipo }}</span>
+            {% else %}
+              <span class="badge badge-aux">{{ r.moda_tipo }}</span>
+            {% endif %}
+            <br><small>{{ r.moda_freq }} jogos ({{ r.moda_pct|num2 }}%)</small>
+          </td>
+          <td>{{ r.minimo }}</td>
+          <td>{{ r.maximo }}</td>
+          <td>{{ r.amplitude }}</td>
+          <td>{{ r.dp|num2 }}</td>
+          <td>{{ r.variancia|num2 }}</td>
+          <td>{{ r.cv|num2 }}%</td>
+          <td>{{ r.q1|num2 }}</td>
+          <td>{{ r.q3|num2 }}</td>
+          <td>
+            <strong>{{ r.iqr|num2 }}</strong><br>
+            <small>[{{ r.cerca_inferior|num2 }} ; {{ r.cerca_superior|num2 }}]</small>
+          </td>
+          <td>
+            {% if r.n_outliers > 0 %}
+              <span class="badge badge-excluded">{{ r.n_outliers }}</span>
+            {% else %}
+              <span class="badge badge-ok">0</span>
+            {% endif %}
+          </td>
+          <td style="min-width: 220px;">
+            {% if r.outliers %}
+              {% for o in r.outliers %}
+                <div>
+                  <code>{{ o.data }}</code> vs <strong>{{ o.adversario }}</strong>:
+                  <strong>{{ o.valor }}</strong> {{ o.seta }}
+                  {% if o.prorrogacao %}<span class="badge badge-warn">OT ({{ o.minutos }}m)</span>{% endif %}
+                </div>
+              {% endfor %}
+            {% else %}
+              <span style="color: var(--text-muted);">Nenhum outlier</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Detalhamento Lado a Lado da Variável Selecionada + Critério da Moda (Multimodal e PTS Quase Contínua) -->
+<div class="two-col-grid">
+  <div class="card" style="margin-bottom: 0;">
+    <div class="card-title">
+      <span>Raio-X Comparativo: {{ data.var_meta.label }}</span>
+      <span class="badge badge-study">{{ data.var_meta.unit }}</span>
+    </div>
+    <div class="card-subtitle">
+      Confronto direto medida a medida entre Boston Celtics (n=74), New Orleans Pelicans (n=76) e a Liga NBA (30 times, N=2.238).
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Medida Estatística</th>
+            <th>Boston Celtics (n=74)</th>
+            <th>New Orleans Pelicans (n=76)</th>
+            <th>Liga NBA (N=2.238)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Média Amostral ($\bar{x}$)</strong></td>
+            <td><strong>{{ data.bos.media|num2 }}</strong></td>
+            <td><strong>{{ data.nop.media|num2 }}</strong></td>
+            <td>{{ data.liga.media|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>Mediana ($Q_2$)</strong></td>
+            <td><strong>{{ data.bos.mediana|num2 }}</strong></td>
+            <td><strong>{{ data.nop.mediana|num2 }}</strong></td>
+            <td>{{ data.liga.mediana|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>Moda ($M_o$) e Frequência</strong></td>
+            <td>{{ data.bos.modes_joined }} ({{ data.bos.moda_tipo }}, {{ data.bos.moda_freq }}x)</td>
+            <td>{{ data.nop.modes_joined }} ({{ data.nop.moda_tipo }}, {{ data.nop.moda_freq }}x)</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><strong>Mínimo – Máximo (Amplitude)</strong></td>
+            <td>{{ data.bos.minimo }} a {{ data.bos.maximo }} (Ampl. = {{ data.bos.amplitude }})</td>
+            <td>{{ data.nop.minimo }} a {{ data.nop.maximo }} (Ampl. = {{ data.nop.amplitude }})</td>
+            <td>{{ data.liga.minimo|int }} a {{ data.liga.maximo|int }} (Ampl. = {{ data.liga.amplitude|int }})</td>
+          </tr>
+          <tr>
+            <td><strong>Desvio Padrão ($s$, ddof=1)</strong></td>
+            <td>{{ data.bos.dp|num2 }}</td>
+            <td>{{ data.nop.dp|num2 }}</td>
+            <td>{{ data.liga.dp|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>Variância Amostral ($s^2$, ddof=1)</strong></td>
+            <td>{{ data.bos.variancia|num2 }}</td>
+            <td>{{ data.nop.variancia|num2 }}</td>
+            <td>{{ data.liga.variancia|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>Coeficiente de Variação (CV%)</strong></td>
+            <td>{{ data.bos.cv|num2 }}%</td>
+            <td>{{ data.nop.cv|num2 }}%</td>
+            <td>{{ data.liga.cv|num2 }}%</td>
+          </tr>
+          <tr>
+            <td><strong>Quartis $Q_1$ (25%) e $Q_3$ (75%)</strong></td>
+            <td>Q1 = {{ data.bos.q1|num2 }} | Q3 = {{ data.bos.q3|num2 }}</td>
+            <td>Q1 = {{ data.nop.q1|num2 }} | Q3 = {{ data.nop.q3|num2 }}</td>
+            <td>Q1 = {{ data.liga.q1|num2 }} | Q3 = {{ data.liga.q3|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>IQR ($Q_3 - Q_1$)</strong></td>
+            <td>{{ data.bos.iqr|num2 }}</td>
+            <td>{{ data.nop.iqr|num2 }}</td>
+            <td>{{ data.liga.iqr|num2 }}</td>
+          </tr>
+          <tr>
+            <td><strong>Cercas de Tukey ($1{,}5 \times \text{IQR}$)</strong></td>
+            <td>[{{ data.bos.cerca_inferior|num2 }} ; {{ data.bos.cerca_superior|num2 }}]</td>
+            <td>[{{ data.nop.cerca_inferior|num2 }} ; {{ data.nop.cerca_superior|num2 }}]</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><strong>Limites dos Bigodes (Adjacentes)</strong></td>
+            <td>[{{ data.bos.bigode_inferior|int }} ; {{ data.bos.bigode_superior|int }}]</td>
+            <td>[{{ data.nop.bigode_inferior|int }} ; {{ data.nop.bigode_superior|int }}]</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><strong>Z-score da Média e da Mediana (Liga)</strong></td>
+            <td>$z_{\bar{x}} = $ {{ "%+.2f"|format(data.bos.z_media_liga)|replace(".", ",") }}σ | $z_{\text{Med}} = $ {{ "%+.2f"|format(data.bos.z_mediana_liga)|replace(".", ",") }}σ</td>
+            <td>$z_{\bar{x}} = $ {{ "%+.2f"|format(data.nop.z_media_liga)|replace(".", ",") }}σ | $z_{\text{Med}} = $ {{ "%+.2f"|format(data.nop.z_mediana_liga)|replace(".", ",") }}σ</td>
+            <td>$z = 0{,}00\sigma$</td>
+          </tr>
+          <tr>
+            <td><strong>Outliers ($1{,}5 \times \text{IQR}$)</strong></td>
+            <td><strong>{{ data.bos.n_outliers }}</strong> ({{ data.bos.outliers_texto }})</td>
+            <td><strong>{{ data.nop.n_outliers }}</strong> ({{ data.nop.outliers_texto }})</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 0;">
+    <div class="card-title">
+      <span>Critério da Moda: Multimodalidade e Caso Quase Contínuo (<code>PTS</code>)</span>
+      <span class="badge badge-warn">Metodologia</span>
+    </div>
+    <div class="card-subtitle">
+      Como tratamos séries multimodais nas 7 variáveis e por que <code>pontos (PTS)</code> exige análise complementar por classe modal e densidade.
+    </div>
+    <div class="interpretation-box amber" style="margin-bottom: 0.9rem; padding: 0.95rem 1.1rem;">
+      <h3>1. Tratamento de Séries Multimodais</h3>
+      <p>
+        Para cada série ($n=74$ no Celtics; $n=76$ no Pelicans), apuramos a frequência absoluta máxima $f_{\max} = \max_x f(x)$ e listamos
+        <strong>todos os valores empatados no topo</strong>: $M = \{x : f(x) = f_{\max}\}$. Das 14 séries analisadas, <strong>11 são unimodais</strong> e
+        <strong>3 são bimodais</strong>:
+      </p>
+      <ul>
+        <li><strong>Pontos (Celtics):</strong> Bimodal em <code>111</code> e <code>120</code> pts ($f = 4$ jogos cada, 5,41%).</li>
+        <li><strong>Rebotes (Pelicans):</strong> Bimodal em <code>40</code> e <code>42</code> rebotes ($f = 9$ jogos cada, 11,84%).</li>
+        <li><strong>Bolas de 3 (Pelicans):</strong> Bimodal em <code>7</code> e <code>10</code> cestas ($f = 9$ jogos cada, 11,84%).</li>
+      </ul>
+      <h3 style="margin-top: 0.65rem;">2. Critério em <code>PTS</code> (Variável Discreta de Escala Ampla / Quase Contínua)</h3>
+      <p>
+        Em <code>pontos</code>, a amplitude de 64 pts no Celtics (84 a 148 pts, com 41 valores distintos em 74 jogos) pulveriza as frequências
+        pontuais, fazendo com que repetições fortuitas de apenas 4 jogos gerem a bimodalidade discreta <code>111 e 120</code>. Por isso, além de
+        reportar a <strong>moda discreta exata</strong>, validamos o centro modal por dois critérios de variáveis contínuas:
+      </p>
+      <ul>
+        <li>
+          <strong>Celtics (PTS):</strong> Moda discreta = <code>111 e 120 pts</code> ($f=4$); <strong>Classe Modal (faixas de 5 pts)</strong> =
+          <code>[110 ; 115) pts</code> com <strong>14 jogos (18,9%)</strong>; <strong>Pico KDE Gaussiano</strong> = <strong>113,50 pts</strong> (idêntico à mediana de 113,50 pts).
+        </li>
+        <li>
+          <strong>Pelicans (PTS):</strong> Moda discreta = <code>116 pts</code> ($f=7$, 9,2%); <strong>Classe Modal (faixas de 5 pts)</strong> =
+          <code>[115 ; 120) pts</code> com <strong>20 jogos (26,3%)</strong>; <strong>Pico KDE Gaussiano</strong> = <strong>116,22 pts</strong> (colado na mediana de 116,00 pts).
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Boxplot Anotado (Plotly) -->
+<div class="card" id="graficos" style="margin-top: 1.5rem;">
+  <div class="card-title">
+    <span>2. Boxplot Anotado de {{ data.var_meta.label }} por Time — Quartis, Média, Moda, Limites e Outliers</span>
+    <span class="badge badge-study">Interpolação Linear · Tukey 1,5×IQR</span>
+  </div>
+  <div class="card-subtitle">
+    Cada painel exibe a caixa interquartil ($Q_1$ a $Q_3$), a <strong>Mediana ($Q_2$)</strong>, a <strong>Média Amostral ($\bar{x}$)</strong>,
+    a(s) <strong>Moda(s) ($M_o$)</strong>, os <strong>Limites dos Bigodes</strong> (mínimo e máximo adjacentes não-outliers), as
+    <strong>Cercas de Tukey ($Q_1 - 1{,}5\times\text{IQR}$ e $Q_3 + 1{,}5\times\text{IQR}$)</strong> e os <strong>Outliers Superiores/Inferiores</strong>
+    anotados com data e adversário. Clique nos itens da legenda para isolar ou ocultar camadas.
+  </div>
+  <div id="chart-boxplot" class="plotly-chart" style="min-height: 560px;"></div>
+</div>
+
+<!-- 3. Gráficos de Barras Comparando Celtics x Pelicans e Padronização Z-score da Liga -->
+<div class="card">
+  <div class="card-title">
+    <span>3. Gráfico de Barras Comparativo Padronizado em Z-score da Liga (As 7 Variáveis na Mesma Escala)</span>
+    <span class="badge badge-derived">Referência: 30 Times · N = 2.238 Jogos</span>
+  </div>
+  <div class="card-subtitle">
+    Como <code>pontos</code> (~115 pts), <code>rebotes</code> (~45 reb) e <code>tocos</code> (~5 blk) possuem unidades e ordens de grandeza incompatíveis,
+    padronizamos cada variável usando a média ($\mu_{\text{liga}}$) e o desvio padrão amostral ($\sigma_{\text{liga}}$, <code>ddof=1</code>) dos
+    <strong>30 times da NBA (2.238 linhas da base bruta)</strong>: $z = (\text{Medida}_{\text{time}} - \mu_{\text{liga}}) / \sigma_{\text{liga}}$.
+    Use o seletor <strong>Medida nos Gráficos de Barras</strong> no topo para alternar entre <strong>Média</strong>, <strong>Mediana</strong> ou <strong>Ambas</strong>.
+  </div>
+  <div id="chart-bars-zscore" class="plotly-chart" style="min-height: 470px;"></div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Onde o Z-score entra nos Gráficos de Barras Comparativos? (Justificativa Metodológica)</h3>
+  <ul>
+    <li>
+      <strong>Problema da Incompatibilidade de Escalas e Unidades:</strong> Em unidades brutas (veja o painel direito do gráfico abaixo),
+      a barra de <code>pontos</code> ($\approx 114\text{ a }115$) é mais de 22 vezes maior que a barra de <code>tocos</code> ($\approx 5$),
+      esmagando visualmente as variáveis de baixa contagem e misturando grandezas distintas (pontos, rebotes, passes, desarmes, faltas e cestas de 3).
+    </li>
+    <li>
+      <strong>Padronização Externa pela Liga Inteira ($N = 2.238$ jogos dos 30 times):</strong> Ao calcular
+      $z_{t, j} = \frac{M_{t, j} - \mu_{\text{liga}, j}}{\sigma_{\text{liga}, j}}$ (onde $M_{t, j}$ é a média ou mediana do time $t$ na variável $j$),
+      convertemos todas as 7 variáveis para uma <strong>unidade comum adimensional: desvios-padrão da NBA ($\sigma_{\text{liga}}$) acima ou abaixo da média da liga ($z = 0$)</strong>.
+      Diferentemente de padronizar apenas dentro dos 150 jogos do recorte (o que forçaria um time a ser sempre o espelho negativo do outro), usar os 30 times da liga preserva a posição real de ambas as equipes na NBA (por exemplo, revelando que <em>tanto</em> Celtics quanto Pelicans dão menos assistências que a média da liga: $z_{\text{BOS}} = -0{,}43\sigma$ e $z_{\text{NOP}} = -0{,}28\sigma$).
+    </li>
+    <li>
+      <strong>Identidade Tática Revelada pelo Gráfico Padronizado:</strong> O gráfico Z-score mostra instantaneamente que a maior divergência entre as equipes está em
+      <strong>Bolas de 3 Convertidas (<code>FG3M</code>)</strong>: o Celtics está em <strong>$+0{,}50\sigma$</strong> acima da NBA, enquanto o Pelicans está em
+      <strong>$-0{,}53\sigma$</strong> abaixo da NBA (um abismo de $1{,}03\sigma$), seguido pela vantagem do Celtics em <strong>Rebotes</strong> ($+0{,}39\sigma$ vs. $-0{,}01\sigma$)
+      e pela vantagem do Pelicans em <strong>Roubos de Bola</strong> ($+0{,}12\sigma$ vs. $-0{,}40\sigma$).
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Comparação em Unidades Originais (Brutas): Foco em {{ data.var_meta.short_label }} vs. Escalas Brutas das 7 Variáveis</span>
+    <span class="badge badge-aux">Unidades Nativas</span>
+  </div>
+  <div class="card-subtitle">
+    À esquerda: comparação de <strong>Média (±1 DP)</strong> e <strong>Mediana</strong> de {{ data.var_meta.label }} entre Celtics, Pelicans e a Liga NBA.
+    À direita: as 7 variáveis na mesma janela em unidades brutas, demonstrando a compressão visual de <code>roubos</code> e <code>tocos</code> sem a padronização Z-score.
+  </div>
+  <div id="chart-bars-raw" class="plotly-chart" style="min-height: 450px;"></div>
+</div>
+
+<!-- Tabela de Padronização Z-score das 7 Variáveis -->
+<div class="card">
+  <div class="card-title">
+    <span>Tabela de Padronização Z-score pela Referência da Liga NBA (30 Equipes, N = 2.238 Jogos)</span>
+    <span class="badge badge-derived">z = (Medida − μ_liga) / σ_liga</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Média Liga ($\mu_{\text{liga}}$)</th>
+          <th>DP Liga ($\sigma_{\text{liga}}$)</th>
+          <th>Mediana Liga</th>
+          <th>Celtics Média</th>
+          <th>Celtics $Z(\text{Média})$</th>
+          <th>Celtics Mediana</th>
+          <th>Celtics $Z(\text{Mediana})$</th>
+          <th>Pelicans Média</th>
+          <th>Pelicans $Z(\text{Média})$</th>
+          <th>Pelicans Mediana</th>
+          <th>Pelicans $Z(\text{Mediana})$</th>
+          <th>Diferença $\Delta Z(\text{Média})$</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for z in data.zscore_table %}
+        <tr class="{% if z.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ z.label }}</strong> ({{ z.unit }})</td>
+          <td>{{ z.liga_media|num2 }}</td>
+          <td>{{ z.liga_dp|num2 }}</td>
+          <td>{{ z.liga_mediana|num2 }}</td>
+          <td><strong>{{ z.bos_media|num2 }}</strong></td>
+          <td>
+            <span class="badge {% if z.bos_z_media >= 0 %}badge-study{% else %}badge-aux{% endif %}">
+              {{ "%+.2f"|format(z.bos_z_media)|replace(".", ",") }}σ
+            </span>
+          </td>
+          <td>{{ z.bos_mediana|num2 }}</td>
+          <td>{{ "%+.2f"|format(z.bos_z_mediana)|replace(".", ",") }}σ</td>
+          <td><strong>{{ z.nop_media|num2 }}</strong></td>
+          <td>
+            <span class="badge {% if z.nop_z_media >= 0 %}badge-derived{% else %}badge-excluded{% endif %}">
+              {{ "%+.2f"|format(z.nop_z_media)|replace(".", ",") }}σ
+            </span>
+          </td>
+          <td>{{ z.nop_mediana|num2 }}</td>
+          <td>{{ "%+.2f"|format(z.nop_z_mediana)|replace(".", ",") }}σ</td>
+          <td><strong>{{ "%+.2f"|format(z.delta_z_media)|replace(".", ",") }}σ</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 5. Síntese Interpretativa Crítica por Variável (Todas as 7 Variáveis: Celtics x Pelicans) -->
+<div class="card">
+  <div class="card-title">
+    <span>5. Interpretação Textual Crítica Completa por Variável (Boston Celtics × New Orleans Pelicans)</span>
+    <span class="badge badge-study">7 Variáveis do Estudo</span>
+  </div>
+  <div class="card-subtitle">
+    Análise comparativa individualizada das 7 variáveis do estudo, integrando medidas de tendência central, dispersão, quartis, outliers e posicionamento Z-score na NBA.
+  </div>
+  {% for item in data.interpretations_all %}
+  <div class="interpretation-box {% if item.variavel == selected_var %}amber{% else %}navy{% endif %}" style="margin-bottom: 1rem;">
+    <h3>
+      {{ item.label }}
+      {% if item.variavel == selected_var %}
+        <span class="badge badge-warn" style="margin-left: 0.4rem;">Variável Selecionada</span>
+      {% endif %}
+      <span style="float: right; font-size: 0.8rem; font-weight: 600; color: #475569;">
+        Δ Média (BOS − NOP): {{ item.diff_media }} | Δ Mediana: {{ item.diff_mediana }} | Δ Z-score: {{ item.diff_z_media }}σ
+      </span>
+    </h3>
+    <p>{{ item.contexto_tatico }}</p>
+    <p style="margin-bottom: 0;"><strong>Análise da Moda e Simetria:</strong> {{ item.criterio_moda }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-boxplot", {{ data.chart_boxplot_json | safe }});
+  renderPlotlyChart("chart-bars-zscore", {{ data.chart_bars_zscore_json | safe }});
+  renderPlotlyChart("chart-bars-raw", {{ data.chart_bars_raw_json | safe }});
+</script>
+{% endblock %}
+

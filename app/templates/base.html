@@ -40,16 +40,16 @@
 
     <div class="nav-group">
       <div class="nav-group-title">(ii) Medidas Descritivas</div>
-      <span class="nav-link disabled">
-        <span>Medidas por Variável e Time</span>
-      </span>
+      <a href="{{ url_for('parte3.descritiva', team=cur_team) }}" class="nav-link {% if active_page == 'descritiva' %}active{% endif %}">
+        <span>Estatística Descritiva</span>
+      </a>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-title">(iii) Gráficos Produzidos</div>
-      <span class="nav-link disabled">
+      <a href="{{ url_for('parte3.descritiva', team=cur_team) }}#graficos" class="nav-link">
         <span>Boxplot e Barras Comparativas</span>
-      </span>
+      </a>
     </div>
 
     <div class="nav-group">

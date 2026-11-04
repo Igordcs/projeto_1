@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from app.analysis.descritiva import MEASURE_CHOICES, get_descritiva_analysis
 from app.analysis.outliers import METHOD_CHOICES, get_outliers_analysis
 from app.analysis.preparacao import (
     get_data_dictionary,
@@ -19,6 +20,7 @@ from app.analysis.preparacao import (
 main_bp = Blueprint("main", __name__)
 parte1_bp = Blueprint("parte1", __name__)
 parte2_bp = Blueprint("parte2", __name__)
+parte3_bp = Blueprint("parte3", __name__)
 
 
 def _get_selected_team() -> str:
@@ -32,6 +34,12 @@ def _get_selected_method() -> str:
     method = request.args.get("method", "todos").strip()
     valid = {item["id"] for item in METHOD_CHOICES}
     return method if method in valid else "todos"
+
+
+def _get_selected_measure() -> str:
+    medida = request.args.get("medida", "media").strip()
+    valid = {item["id"] for item in MEASURE_CHOICES}
+    return medida if medida in valid else "media"
 
 
 def _get_selected_variable() -> str:
@@ -185,4 +193,27 @@ def outliers():
         selected_var=var,
         selected_method=method,
         active_page="outliers",
+    )
+
+
+@parte3_bp.route("/descritiva")
+@parte3_bp.route("/parte3/descritiva")
+@parte3_bp.route("/estatistica-descritiva")
+def descritiva():
+    """(ii) e (iii) Estatística descritiva univariada, boxplot anotado e barras comparativas."""
+    team = _get_selected_team()
+    var = _get_selected_variable()
+    medida = _get_selected_measure()
+    data = get_descritiva_analysis(
+        team=None if team == "todos" else team,
+        variable=var,
+        medida=medida,
+    )
+    return render_template(
+        "parte3/descritiva.html",
+        data=data,
+        selected_team=team,
+        selected_var=var,
+        selected_medida=medida,
+        active_page="descritiva",
     )

@@ -28,7 +28,8 @@ projeto1/
 │   ├── analysis/
 │   │   ├── __init__.py
 │   │   ├── preparacao.py           # Parte 1: Dicionário, Tratamentos, Especiais e Simulação MCAR/MAR
-│   │   └── outliers.py             # Parte 2: Z-score, IQR, Grubbs, ECOD, k-NN, DBSCAN e LOF
+│   │   ├── outliers.py             # Parte 2: Z-score, IQR, Grubbs, ECOD, k-NN, DBSCAN e LOF
+│   │   └── descritiva.py           # Parte 3: Estatística descritiva, Boxplot anotado e Barras (Z-score da liga)
 │   ├── static/
 │   │   ├── css/style.css           # Identidade visual responsiva
 │   │   └── js/main.js              # Renderização Plotly e seletores dinâmicos
@@ -41,8 +42,10 @@ projeto1/
 │       │   ├── tratamentos.html    # 1.3 Datas, Categóricas e Exclusão para ML/DL (Data Leakage)
 │       │   ├── valores_especiais.html # 1.4 Zeros, Duplicados e Prorrogações (MIN != 240)
 │       │   └── ausentes.html       # 1.5 Teoria MCAR/MAR/MNAR e Simulação (Little e Fairclough)
-│       └── parte2/
-│           └── outliers.html       # 2. Outliers univariados e jogos de prorrogação
+│       ├── parte2/
+│       │   └── outliers.html       # 2. Outliers univariados e jogos de prorrogação
+│       └── parte3/
+│           └── descritiva.html     # 3. Estatística descritiva, Boxplot anotado e Barras comparativas
 ├── data/
 │   ├── raw/
 │   │   └── stats_times_regular_final.csv  # Base bruta oficial (2238 linhas × 28 colunas, 30 times)
@@ -62,4 +65,3 @@ projeto1/
 - **Critério de Outliers (Tukey):** Limites definidos por $Q_1 - 1{,}5 \times \text{IQR}$ e $Q_3 + 1{,}5 \times \text{IQR}$.
 - **Coeficiente de Variação (CV):** Expresso em percentual com `ddof=1`.
 - **Fonte única de dados limpos:** Todas as análises consomem `load_clean(team=None)` em `app/data_loader.py` a partir de `data/processed/jogos_limpo.csv`.
-
