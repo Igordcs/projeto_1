@@ -67,9 +67,9 @@
       <a href="{{ url_for('parte1.valores_especiais', team=cur_team) }}" class="nav-link {% if active_page == 'valores_especiais' %}active{% endif %}">
         <span>Inconsistências e Especiais</span>
       </a>
-      <span class="nav-link disabled">
+      <a href="{{ url_for('parte2.outliers', team=cur_team) }}" class="nav-link {% if active_page == 'outliers' %}active{% endif %}">
         <span>Detecção de Outliers</span>
-      </span>
+      </a>
     </div>
 
     <div class="sidebar-footer">

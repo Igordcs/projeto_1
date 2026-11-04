@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from flask import Blueprint, render_template, request
 
+from app.analysis.outliers import METHOD_CHOICES, get_outliers_analysis
 from app.analysis.preparacao import (
     get_data_dictionary,
     get_missing_values_analysis,
@@ -17,6 +18,7 @@ from app.analysis.preparacao import (
 
 main_bp = Blueprint("main", __name__)
 parte1_bp = Blueprint("parte1", __name__)
+parte2_bp = Blueprint("parte2", __name__)
 
 
 def _get_selected_team() -> str:
@@ -24,6 +26,12 @@ def _get_selected_team() -> str:
     if team not in {"todos", "Boston Celtics", "New Orleans Pelicans"}:
         return "todos"
     return team
+
+
+def _get_selected_method() -> str:
+    method = request.args.get("method", "todos").strip()
+    valid = {item["id"] for item in METHOD_CHOICES}
+    return method if method in valid else "todos"
 
 
 def _get_selected_variable() -> str:
@@ -155,4 +163,26 @@ def ausentes():
         selected_rate=f"{rate:.2f}",
         selected_seed=seed,
         active_page="ausentes",
+    )
+
+
+@parte2_bp.route("/outliers")
+@parte2_bp.route("/parte2/outliers")
+def outliers():
+    """Qualidade dos dados: outliers e inconsistências pelos seis métodos."""
+    team = _get_selected_team()
+    var = _get_selected_variable()
+    method = _get_selected_method()
+    data = get_outliers_analysis(
+        team=None if team == "todos" else team,
+        variable=var,
+        method=method,
+    )
+    return render_template(
+        "parte2/outliers.html",
+        data=data,
+        selected_team=team,
+        selected_var=var,
+        selected_method=method,
+        active_page="outliers",
     )

@@ -1,0 +1,623 @@
+{% extends "base.html" %}
+{% block title %}Qualidade: outliers | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Qualidade dos Dados · Outliers e inconsistências</div>
+  <h2>Detecção de outliers: Z-score, IQR, Grubbs, ECOD, k-NN, DBSCAN e LOF</h2>
+  <p>
+    Cada método roda em separado, por time e por variável, sobre os totais de jogo em
+    <code>jogos_limpo.csv</code>. Celtics (74 jogos) e Pelicans (76 jogos) não entram na mesma série.
+    A regra descritiva do projeto continua sendo a cerca de Tukey (1,5×IQR). Os outros cinco métodos
+    confrontam essa regra. A base não é reescrita.
+  </p>
+</div>
+
+<form method="get" action="{{ url_for('parte2.outliers') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os times</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável:</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="method">Método:</label>
+    <select name="method" id="method" class="filter-select" data-autosubmit="true">
+      {% for choice in data.method_choices %}
+      <option value="{{ choice.id }}" {% if selected_method == choice.id %}selected{% endif %}>{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar detecção</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Jogos sinalizados no recorte</div>
+    <div class="kpi-value">{{ data.kpis.n_sinalizados }}</div>
+    <div class="kpi-sub">{{ data.var_meta.short_label }} · {{ data.method_label }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Interseção dos métodos aplicáveis</div>
+    <div class="kpi-value">{{ data.kpis.n_intersecao }}</div>
+    <div class="kpi-sub">Jogos marcados por todos os métodos, na variável selecionada</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Prorrogações nessa lista</div>
+    <div class="kpi-value">{{ data.kpis.n_ot_sinalizados }}</div>
+    <div class="kpi-sub">Das 6 partidas com MIN = 265 ou 290</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Shapiro-Wilk no recorte</div>
+    <div class="kpi-value" style="font-size:1.35rem;">{{ data.kpis.shapiro_label }}</div>
+    <div class="kpi-sub">Normalidade a 5%, nas séries de {{ data.var_meta.short_label }}</div>
+  </div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Leitura do recorte</h3>
+  {% for paragraph in data.texts.leitura %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Parâmetros fixos e justificativa</span>
+    <span class="badge badge-study">Convenção do projeto</span>
+  </div>
+  <div class="card-subtitle">
+    Desvio padrão amostral (ddof = 1). Quartis por interpolação linear. Tabelas de medida com duas casas decimais;
+    p-valores com quatro casas, porque duas casas apagariam a decisão do teste.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Método</th>
+          <th>Valor adotado</th>
+          <th>Por que este valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for param in data.parameters %}
+        <tr>
+          <td><strong>{{ param.nome }}</strong></td>
+          <td>{{ param.valor }}</td>
+          <td>{{ param.justificativa }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Teoria dos seis detectores</span>
+    <span class="badge badge-aux">Univariados</span>
+  </div>
+  <div class="card-subtitle">
+    O bloco da regra selecionada fica em destaque. Com “comparar todos”, os sete textos ficam ativos
+    porque a lista de jogos é a união.
+  </div>
+  {% for block in data.theory %}
+  <div class="interpretation-box {% if selected_method == block.id or selected_method == 'todos' %}amber{% else %}navy{% endif %}">
+    <h3>{{ block.titulo }}</h3>
+    <p>{{ block.texto }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Outliers por variável, método e time</span>
+    <span class="badge badge-study">14 séries</span>
+  </div>
+  <div class="card-subtitle">
+    A tabela inteira permanece visível para comparação. A linha em destaque é a variável do seletor.
+    O asterisco no Grubbs indica resultado indicativo: Shapiro-Wilk rejeitou a normalidade, a variável
+    é contagem discreta (roubos ou tocos) ou o valor mais repetido cobre pelo menos 20% dos jogos.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Time</th>
+          <th>n</th>
+          <th>Z-score</th>
+          <th>IQR</th>
+          <th>Grubbs</th>
+          <th>ECOD</th>
+          <th>k-NN</th>
+          <th>DBSCAN</th>
+          <th>LOF</th>
+          <th>União</th>
+          <th>Interseção</th>
+          <th>Shapiro p</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.count_rows %}
+        <tr class="{% if row.selecionada %}highlight-study{% endif %}">
+          <td><strong>{{ row.label }}</strong></td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.n }}</td>
+          <td>{% if row.counts.zscore is none %}—{% else %}{{ row.counts.zscore }}{% endif %}</td>
+          <td>{% if row.counts.iqr is none %}—{% else %}{{ row.counts.iqr }}{% endif %}</td>
+          <td>
+            {% if row.counts.grubbs is none %}
+              —
+            {% else %}
+              {{ row.counts.grubbs }}{% if row.grubbs_indicativo %}*{% endif %}
+            {% endif %}
+          </td>
+          <td>{% if row.counts.ecod is none %}—{% else %}{{ row.counts.ecod }}{% endif %}</td>
+          <td>{% if row.counts.knn is none %}—{% else %}{{ row.counts.knn }}{% endif %}</td>
+          <td>{% if row.counts.dbscan is none %}—{% else %}{{ row.counts.dbscan }}{% endif %}</td>
+          <td>{% if row.counts.lof is none %}—{% else %}{{ row.counts.lof }}{% endif %}</td>
+          <td><strong>{{ row.uniao }}</strong></td>
+          <td><strong>{{ row.intersecao }}</strong></td>
+          <td>{{ row.shapiro_p_txt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Limites da série selecionada — {{ data.var_meta.label }}</span>
+    <span class="badge badge-aux">{{ data.var_meta.unit }}</span>
+  </div>
+  <div class="card-subtitle">
+    Q1, Q3 e as cercas usam a série completa do time, inclusive prorrogações.
+    Média e desvio são amostrais (ddof = 1).
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Medida</th>
+          {% for row in data.stat_rows %}
+          <th>{{ row.time }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Jogos (n)</td>
+          {% for row in data.stat_rows %}<td>{{ row.n }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Média</td>
+          {% for row in data.stat_rows %}<td>{{ row.media|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Desvio padrão (ddof = 1)</td>
+          {% for row in data.stat_rows %}<td>{{ row.desvio|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Q1</td>
+          {% for row in data.stat_rows %}<td>{{ row.q1|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Q3</td>
+          {% for row in data.stat_rows %}<td>{{ row.q3|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>IQR = Q3 − Q1</td>
+          {% for row in data.stat_rows %}<td>{{ row.iqr|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Cerca inferior (Q1 − 1,5×IQR)</td>
+          {% for row in data.stat_rows %}<td>{{ row.cerca_inf|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Cerca superior (Q3 + 1,5×IQR)</td>
+          {% for row in data.stat_rows %}<td>{{ row.cerca_sup|num2 }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Limite z = −3</td>
+          {% for row in data.stat_rows %}
+          <td>{% if row.z_inf is none %}—{% else %}{{ row.z_inf|num2 }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Limite z = +3</td>
+          {% for row in data.stat_rows %}
+          <td>{% if row.z_sup is none %}—{% else %}{{ row.z_sup|num2 }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Shapiro-Wilk W</td>
+          {% for row in data.stat_rows %}
+          <td>{% if row.shapiro_w is none %}—{% else %}{{ row.shapiro_w|num4 }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Shapiro-Wilk p</td>
+          {% for row in data.stat_rows %}<td>{{ row.shapiro_p_txt }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Normalidade a 5%</td>
+          {% for row in data.stat_rows %}<td>{{ row.normalidade }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Limiar k-NN (percentil 95)</td>
+          {% for row in data.stat_rows %}
+          <td>{% if row.knn_limiar is none %}—{% else %}{{ row.knn_limiar|num2 }} {{ data.var_meta.unit }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Empates exatamente no limiar k-NN</td>
+          {% for row in data.stat_rows %}<td>{{ row.knn_empates }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Escores LOF sentinela descartados</td>
+          {% for row in data.stat_rows %}<td>{{ row.lof_sentinels }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>eps do DBSCAN</td>
+          {% for row in data.stat_rows %}
+          <td>{% if row.eps is none %}—{% else %}{{ row.eps|num2 }} {{ data.var_meta.unit }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Aglomerados / ruído (DBSCAN)</td>
+          {% for row in data.stat_rows %}
+          <td>
+            {% if row.dbscan_clusters is none %}—{% else %}{{ row.dbscan_clusters }} aglomerados, {{ row.dbscan_ruido }} ruídos{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td>Valores distintos (empate máximo)</td>
+          {% for row in data.stat_rows %}
+          <td>{{ row.n_unique }} distintos; moda empírica em {{ row.max_tie_pct|num2 }}% dos jogos</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Série de {{ data.var_meta.short_label }} com média, |z| = 3 e cercas de Tukey</span>
+  </div>
+  <div class="card-subtitle">
+    Os pontos vermelhos seguem o método do seletor (ou a união, em “comparar todos”).
+    As retas são sempre a média, os limites |z| = 3 e as cercas 1,5×IQR, para os dois critérios clássicos
+    ficarem visíveis junto com as prorrogações.
+  </div>
+  <div id="chart-scatter" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Boxplot de {{ data.var_meta.short_label }} (método IQR)</span>
+  </div>
+  <div class="card-subtitle">
+    Quartis por interpolação linear e pontos além de 1,5×IQR. A média aparece como marca interna.
+    A anotação completa, com moda e assimetria, fica na parte descritiva do relatório.
+  </div>
+  <div id="chart-box" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Comparação entre métodos em {{ data.var_meta.short_label }}</span>
+  </div>
+  <div class="card-subtitle">
+    O gráfico de barras mantém os dois times, mesmo quando o seletor filtra a lista de jogos.
+    O eixo é a contagem de jogos sinalizados, não o valor da estatística. O Z-score entra como uma das regras.
+  </div>
+  <div id="chart-bars" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Curva de k-distância — escolha de eps no DBSCAN</span>
+  </div>
+  <div class="card-subtitle">
+    k = 4, porque min_samples = 5 conta o próprio ponto mais quatro vizinhos.
+    O losango é o cotovelo: o ponto da curva mais distante da corda entre o primeiro e o último valor.
+    Esse valor é o eps da série.
+  </div>
+  <div id="chart-kdist" class="plotly-chart"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Jogos sinalizados — {{ data.var_meta.label }}</span>
+    <span class="badge badge-warn">{{ data.flagged_games|length }} {% if data.flagged_games|length == 1 %}partida{% else %}partidas{% endif %}</span>
+  </div>
+  <div class="card-subtitle">
+    Data, adversário e valor, com os métodos que concordam. A distância à cerca é zero quando o jogo
+    está dentro do IQR e foi marcado por outra regra. Ordenação: mais métodos primeiro.
+  </div>
+  {% if data.flagged_games %}
+  <div class="table-responsive" style="max-height: 560px; overflow-y: auto;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Time</th>
+          <th>Adversário</th>
+          <th>Confronto</th>
+          <th>{{ data.var_meta.short_label }} ({{ data.var_meta.unit }})</th>
+          <th>Minutos</th>
+          <th>z</th>
+          <th>Lado da cerca</th>
+          <th>Distância à cerca</th>
+          <th>Métodos (n)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for game in data.flagged_games %}
+        <tr>
+          <td>{{ game.data }}</td>
+          <td>{{ game.time_short }}</td>
+          <td><strong>{{ game.adversario }}</strong></td>
+          <td><code>{{ game.confronto }}</code></td>
+          <td><strong>{{ game.valor }}</strong></td>
+          <td>
+            {% if game.prorrogacao %}
+              <span class="badge badge-warn">{{ game.minutos }} (OT)</span>
+            {% else %}
+              {{ game.minutos }}
+            {% endif %}
+          </td>
+          <td>{{ game.z|num2 }}</td>
+          <td>{{ game.lado }}</td>
+          <td>{{ game.dist_cerca|num2 }}</td>
+          <td>{{ game.metodos }} ({{ game.n_metodos }})</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>Nenhum jogo desta série foi sinalizado pela regra selecionada.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Onde os métodos concordam e onde divergem</span>
+  </div>
+  <div class="card-subtitle">
+    A concordância olha os seis métodos ao mesmo tempo, na variável selecionada.
+    O seletor de método filtra a lista de jogos e o destaque do gráfico, não esta tabela.
+  </div>
+  {% for block in data.agreements %}
+  <h3 style="margin: 0.8rem 0 0.4rem; font-size: 1rem;">{{ block.time }}</h3>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>União</th>
+          <th>Interseção</th>
+          {% for bucket in block.por_quantidade %}
+          <th>{{ bucket.k }} método(s)</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>{{ block.uniao }}</strong></td>
+          <td><strong>{{ block.intersecao }}</strong></td>
+          {% for bucket in block.por_quantidade %}
+          <td>{{ bucket.jogos }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% if block.intersecao_jogos %}
+  <p style="margin-top: 0.6rem;">
+    Interseção:
+    {% for game in block.intersecao_jogos %}
+      {{ game.data }} contra {{ game.adversario }} ({{ game.valor }}{% if game.prorrogacao %}, prorrogação{% endif %}){% if not loop.last %}; {% endif %}
+    {% endfor %}
+  </p>
+  {% else %}
+  <p style="margin-top: 0.6rem;">Nenhum jogo de {{ block.time_short }} é marcado por todos os métodos aplicáveis.</p>
+  {% endif %}
+  {% if block.isolados %}
+  <p>
+    Marcados por um único método:
+    {% for row in block.isolados %}{{ row.metodo }} ({{ row.jogos }}){% if not loop.last %}; {% endif %}{% endfor %}.
+  </p>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Passos do Grubbs (α = 0,05, bicaudal)</span>
+  </div>
+  <div class="card-subtitle">
+    G é comparado ao crítico da t com n − 2 graus e nível α / (2n). Cada passo usa α = 0,05 de novo,
+    sem correção de multiplicidade. O teto é 10% de n.
+  </div>
+  {% for block in data.grubbs_blocks %}
+  <h3 style="margin: 0.8rem 0 0.4rem; font-size: 1rem;">
+    {{ block.time }}
+    {% if block.indicativo %}<span class="badge badge-warn">Indicativo</span>{% else %}<span class="badge badge-ok">Hipótese não rejeitada pelo Shapiro-Wilk</span>{% endif %}
+  </h3>
+  {% if not block.aplicavel %}
+  <p>{{ block.motivo }}</p>
+  {% elif block.steps %}
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Passo</th>
+          <th>n no passo</th>
+          <th>G</th>
+          <th>G crítico</th>
+          <th>Valor testado</th>
+          <th>Empates no extremo</th>
+          <th>Decisão</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for step in block.steps %}
+        <tr>
+          <td>{{ step.passo }}</td>
+          <td>{{ step.n }}</td>
+          <td>{{ step.G|num2 }}</td>
+          <td>{{ step.Gcrit|num2 }}</td>
+          <td>{{ step.valor|num2 }}</td>
+          <td>{{ step.empates }}</td>
+          <td>{% if step.removido %}Remove e retesta{% else %}Para: G não supera o crítico{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>Nenhum passo foi registrado.</p>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Prorrogações na variável {{ data.var_meta.short_label }}</span>
+    <span class="badge badge-warn">6 jogos · MIN 265 ou 290</span>
+  </div>
+  <div class="card-subtitle">
+    O valor em 48 min é o total vezes 240/MIN. “Ainda fora” compara esse ritmo com as cercas e com |z| = 3
+    calculados só nos jogos de 240 minutos do mesmo time. É um contrafactual, não a regra oficial da série completa.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Time</th>
+          <th>Adversário</th>
+          <th>Minutos</th>
+          <th>Valor bruto</th>
+          <th>Valor em 48 min</th>
+          <th>Métodos no bruto</th>
+          <th>Fora do IQR bruto</th>
+          <th>Ainda fora do IQR (48 min)</th>
+          <th>Ainda fora de |z| = 3 (48 min)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.ot_selected %}
+        <tr>
+          <td>{{ row.data }}</td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.adversario }}</td>
+          <td>{{ row.minutos }}</td>
+          <td><strong>{{ row.valor }}</strong></td>
+          <td>{{ row.valor_48|num2 }}</td>
+          <td>{{ row.metodos }}</td>
+          <td>{% if row.fora_iqr %}Sim{% else %}Não{% endif %}</td>
+          <td>{% if row.fora_iqr_48 %}Sim{% else %}Não{% endif %}</td>
+          <td>{% if row.fora_z_48 %}Sim{% else %}Não{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Prorrogações nas sete variáveis — quantos métodos marcam o jogo</span>
+  </div>
+  <div class="card-subtitle">
+    Cada célula é o número de métodos aplicáveis que sinalizam aquela variável naquele jogo.
+    Zero significa que nenhuma regra tratou o total como outlier.
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Time</th>
+          <th>Adversário</th>
+          <th>Minutos</th>
+          {% for var in data.variable_order %}
+          <th>{{ var.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.ot_matrix %}
+        <tr>
+          <td>{{ row.data }}</td>
+          <td>{{ row.time_short }}</td>
+          <td>{{ row.adversario }}</td>
+          <td>{{ row.minutos }}</td>
+          {% for var in data.variable_order %}
+          <td {% if var.key == data.variable %}class="highlight-study"{% endif %}>
+            <strong>{{ row.counts[var.key] }}</strong>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Normalidade e limite do Grubbs</h3>
+  {% for paragraph in data.texts.normalidade %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box">
+  <h3>Concordância, divergência e o lugar do Z-score</h3>
+  {% for paragraph in data.texts.concordancia %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box amber">
+  <h3>Prorrogação: manter, tratar ou remover</h3>
+  {% for paragraph in data.texts.prorrogacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+  {% for paragraph in data.texts.recomendacao %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Por que a análise fica em uma dimensão</h3>
+  {% for paragraph in data.texts.univariada %}
+  <p>{{ paragraph }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-scatter", {{ data.chart_scatter_json | safe }});
+  renderPlotlyChart("chart-box", {{ data.chart_box_json | safe }});
+  renderPlotlyChart("chart-bars", {{ data.chart_bars_json | safe }});
+  renderPlotlyChart("chart-kdist", {{ data.chart_kdist_json | safe }});
+</script>
+{% endblock %}

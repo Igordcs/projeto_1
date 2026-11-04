@@ -1,4 +1,4 @@
-s"""
+"""
 Inicialização da aplicação web Flask — Análise Estatística NBA (Boston Celtics & New Orleans Pelicans).
 """
 
@@ -17,10 +17,11 @@ def create_app() -> Flask:
     if not PROCESSED_PATH.exists():
         build_clean_dataframe(save=True)
 
-    from app.routes import main_bp, parte1_bp
+    from app.routes import main_bp, parte1_bp, parte2_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(parte1_bp)
+    app.register_blueprint(parte2_bp)
 
     @app.context_processor
     def inject_globals():

@@ -27,19 +27,22 @@ projeto1/
 │   ├── routes.py                   # Blueprints por parte do projeto
 │   ├── analysis/
 │   │   ├── __init__.py
-│   │   └── preparacao.py           # Parte 1: Dicionário, Tratamentos, Especiais e Simulação MCAR/MAR
+│   │   ├── preparacao.py           # Parte 1: Dicionário, Tratamentos, Especiais e Simulação MCAR/MAR
+│   │   └── outliers.py             # Parte 2: Z-score, IQR, Grubbs, ECOD, k-NN, DBSCAN e LOF
 │   ├── static/
 │   │   ├── css/style.css           # Identidade visual responsiva
 │   │   └── js/main.js              # Renderização Plotly e seletores dinâmicos
 │   └── templates/
 │       ├── base.html               # Layout base com menu lateral por seções
 │       ├── index.html              # Painel executivo (Visão Geral)
-│       └── parte1/
-│           ├── dicionario.html     # 1.1 Dicionário de Dados (Apêndice)
-│           ├── tipos_tamanho.html  # 1.2 Tipos, Tamanho (2238×28 -> 150×34) e Sazonalidade
-│           ├── tratamentos.html    # 1.3 Datas, Categóricas e Exclusão para ML/DL (Data Leakage)
-│           ├── valores_especiais.html # 1.4 Zeros, Duplicados e Prorrogações (MIN != 240)
-│           └── ausentes.html       # 1.5 Teoria MCAR/MAR/MNAR e Simulação (Little e Fairclough)
+│       ├── parte1/
+│       │   ├── dicionario.html     # 1.1 Dicionário de Dados (Apêndice)
+│       │   ├── tipos_tamanho.html  # 1.2 Tipos, Tamanho (2238×28 -> 150×34) e Sazonalidade
+│       │   ├── tratamentos.html    # 1.3 Datas, Categóricas e Exclusão para ML/DL (Data Leakage)
+│       │   ├── valores_especiais.html # 1.4 Zeros, Duplicados e Prorrogações (MIN != 240)
+│       │   └── ausentes.html       # 1.5 Teoria MCAR/MAR/MNAR e Simulação (Little e Fairclough)
+│       └── parte2/
+│           └── outliers.html       # 2. Outliers univariados e jogos de prorrogação
 ├── data/
 │   ├── raw/
 │   │   └── stats_times_regular_final.csv  # Base bruta oficial (2238 linhas × 28 colunas, 30 times)
