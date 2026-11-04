@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Inconsistências e Valores Especiais | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Qualidade dos Dados · Inconsistências e Domínio</div>
+  <h2>Valores Especiais: Zeros, Negativos, Duplicados e Prorrogações (<code>MIN != 240</code>)</h2>
+  <p>
+    Inspeção sistemática de valores extremos ou estruturais: ocorrências de zero em <code>roubos</code> (<code>STL=0</code>) e
+    <code>tocos</code> (<code>BLK=0</code>), ausência de valores negativos, análise da repetição legítima de <code>Game_ID</code>
+    no confronto direto Celtics × Pelicans e discussão metodológica dos <strong>6 jogos com prorrogação</strong> (<code>MIN = 265</code> e <code>290</code>).
+  </p>
+</div>
+
+<!-- Seletor Interativo de Time e Variável -->
+<form method="get" action="{{ url_for('parte1.valores_especiais') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (n = 150)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável para Comparação Bruto vs. Normalizado (48 min):</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>
+        {{ meta.label }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar Auditoria</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Valores Negativos</div>
+    <div class="kpi-value" style="color: var(--celtics-green);">0 ocorrências</div>
+    <div class="kpi-sub">100% das 25 variáveis numéricas &ge; 0</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Zeros nas 7 Variáveis Foco</div>
+    <div class="kpi-value">3 ocorrências</div>
+    <div class="kpi-sub">1 em <code>roubos</code> (STL=0) e 2 em <code>tocos</code> (BLK=0)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Linhas Duplicadas Exatas</div>
+    <div class="kpi-value">{{ data.exact_duplicates_clean }} linhas</div>
+    <div class="kpi-sub">1 <code>Game_ID</code> repetido (confronto direto 27/10/2025)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Jogos com Prorrogação (OT)</div>
+    <div class="kpi-value" style="color: var(--pelicans-red);">6 partidas</div>
+    <div class="kpi-sub">5 com 265 min (Pelicans) e 1 com 290 min (Celtics)</div>
+  </div>
+</div>
+
+<!-- 1. Zeros e Negativos -->
+<div class="card">
+  <div class="card-title">
+    <span>1. Diagnóstico de Zeros e Valores Negativos nas Colunas Numéricas</span>
+    <span class="badge badge-ok">0 Negativos em toda a base</span>
+  </div>
+  <div class="card-subtitle">
+    Contagem de zeros nas 7 variáveis principais do estudo e nas demais colunas que apresentam valores nulos legítimos no recorte (n = 150).
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Coluna (PT)</th>
+          <th>Zeros Celtics (n=74)</th>
+          <th>Zeros Pelicans (n=76)</th>
+          <th>Total de Zeros (n=150)</th>
+          <th>% Zeros</th>
+          <th>Negativos</th>
+          <th>Intervalo [Mín ; Máx]</th>
+          <th>Interpretação no Domínio Esportivo e Estatístico</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for z in data.zeros_table %}
+        <tr class="{% if z.is_study %}highlight-study{% endif %}">
+          <td><code>{{ z.coluna }}</code></td>
+          <td>{{ z.zeros_celtics }}</td>
+          <td>{{ z.zeros_pelicans }}</td>
+          <td><strong>{{ z.zeros_total }}</strong></td>
+          <td>{{ z.pct_zeros|num2 }}%</td>
+          <td>{{ z.negativos_total }}</td>
+          <td>[{{ z.min_val }} ; {{ z.max_val }}]</td>
+          <td>{{ z.interpretacao }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Partidas Específicas com Zero em Roubos (<code>STL = 0</code>) ou Tocos (<code>BLK = 0</code>)</div>
+  <div class="card-subtitle">
+    Não são erros de coleta nem códigos de ausência: são partidas reais em que a defesa não registrou desarmes ou bloqueios. Contudo, a presença de zero impede aplicar $\ln(x)$ diretamente (exigindo $\ln(x+1)$ via <code>np.log1p</code>).
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável com Valor Zero</th>
+          <th>Equipe</th>
+          <th>Data</th>
+          <th>Confronto</th>
+          <th>Resultado</th>
+          <th>Pontos</th>
+          <th>Rebotes</th>
+          <th>Assistências</th>
+          <th>Roubos (STL)</th>
+          <th>Tocos (BLK)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in data.zero_games_study %}
+        <tr>
+          <td><span class="badge badge-warn">{{ g.variavel }}</span></td>
+          <td><strong>{{ g.time }}</strong></td>
+          <td>{{ g.data }}</td>
+          <td><code>{{ g.confronto }}</code></td>
+          <td>{{ g.vitoria }}</td>
+          <td>{{ g.pontos }}</td>
+          <td>{{ g.rebotes }}</td>
+          <td>{{ g.assistencias }}</td>
+          <td><strong>{{ g.roubos }}</strong></td>
+          <td><strong>{{ g.tocos }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 2. Duplicados e Confronto Direto -->
+<div class="card">
+  <div class="card-title">
+    <span>2. Verificação de Duplicatas e Explicação do <code>Game_ID = 22500117</code> Repetido</span>
+    <span class="badge badge-derived">0 Linhas Duplicadas · 1 Confronto Direto</span>
+  </div>
+  <div class="card-subtitle">
+    A base possui <strong>0 linhas duplicadas</strong> (<code>df.duplicated().sum() == 0</code>) e <strong>0 chaves <code>(id_time, id_jogo)</code> repetidas</strong>.
+    Entretanto, o identificador <code>id_jogo = 22500117</code> aparece <strong>2 vezes</strong> nas 150 linhas porque, em <strong>27/10/2025</strong>,
+    Boston Celtics e New Orleans Pelicans enfrentaram-se diretamente em Nova Orleans (vitória do Celtics por 122 a 90):
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th><code>id_jogo</code></th>
+          <th>Data</th>
+          <th>Equipe (Ótica da Linha)</th>
+          <th><code>confronto</code></th>
+          <th>Mando</th>
+          <th><code>vitoria</code></th>
+          <th>Pontos</th>
+          <th>Rebotes</th>
+          <th>Assistências</th>
+          <th>Roubos</th>
+          <th>Tocos</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data.repeated_game_rows %}
+        <tr class="highlight-derived">
+          <td><code>{{ r.id_jogo }}</code></td>
+          <td>{{ r.data }}</td>
+          <td><strong>{{ r.time }}</strong></td>
+          <td><code>{{ r.confronto }}</code></td>
+          <td>{{ r.mandante }}</td>
+          <td><strong>{{ r.vitoria }}</strong></td>
+          <td><strong>{{ r.pontos }}</strong></td>
+          <td>{{ r.rebotes }}</td>
+          <td>{{ r.assistencias }}</td>
+          <td>{{ r.roubos }}</td>
+          <td>{{ r.tocos }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 3. Fora de Domínio e Prorrogações (MIN != 240) -->
+<div class="card">
+  <div class="card-title">
+    <span>3. Consistência de Domínio e Impacto das 6 Prorrogações (<code>MIN = 265</code> e <code>290</code>) em {{ data.var_meta.label }}</span>
+    <span class="badge badge-warn">Discussão: Normalizar por 48 min?</span>
+  </div>
+  <div class="card-subtitle">
+    Em tempo regulamentar (4 quartos de 12 min com 5 atletas em quadra), <code>MIN = 48 × 5 = 240</code>. Cada prorrogação de 5 minutos adiciona <code>5 × 5 = 25</code> minutos-jogador (1 OT = 265 min; 2 OT = 290 min).
+  </div>
+  <div id="chart-ot" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Discussão Metodológica: <code>MIN != 240</code> é Inconsistência ou Contexto? É Adequado Normalizar por 48 Minutos?</h3>
+  <ul>
+    <li>
+      <strong>Inconsistência vs. Contexto Legítimo:</strong> Os valores <code>MIN = 265</code> (5 jogos do Pelicans) e <code>MIN = 290</code> (1 jogo do Celtics em 23/01/2026 contra o Brooklyn Nets, com 2 prorrogações) <strong>não são erros de registro nem valores fora de domínio</strong> — seguem a relação exata $\text{MIN} = 240 + 25k$, onde $k \in \{1, 2\}$ é o número de prorrogações disputadas.
+    </li>
+    <li>
+      <strong>Quando manter o valor bruto (sem normalizar):</strong> Na estatística descritiva oficial da NBA e na caracterização das partidas reais, os totais brutos (como os 142 pontos do Pelicans contra o Minnesota em 02/12/2025 ou os 130 pontos do Celtics em 2 OT contra o Nets) representam o fato histórico ocorrido na partida. Removê-los ou alterá-los na base principal distorceria os recordes reais da temporada. Por isso, mantemos os valores brutos e adicionamos a coluna binária <code>prorrogacao</code> (0/1).
+    </li>
+    <li>
+      <strong>Quando a normalização por 48 minutos ($\text{Valor}_{48} = \text{Valor} \times \frac{240}{\text{MIN}}$) é adequada:</strong> Como 1 OT aumenta o tempo de exposição em <strong>+10,42%</strong> e 2 OT aumentam em <strong>+20,83%</strong>, métricas acumulativas de volume (<code>pontos</code>, <code>rebotes</code>, <code>assistencias</code>, <code>faltas</code>) ficam artificialmente infladas e frequentemente aparecem como falsos <em>outliers</em> em testes univariados (Z-score, IQR, Grubbs). Portanto, para comparar <strong>ritmo/produtividade por tempo regulamentar</strong> entre equipes (especialmente porque o Pelicans teve 5 jogos com OT contra apenas 1 do Celtics), a normalização por 48 minutos corrige o viés de exposição temporal.
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">Os 6 Jogos com Prorrogação (<code>MIN != 240</code>): Valores Brutos vs. Normalizados para 48 Minutos ($\times 240/\text{MIN}$)</div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Equipe</th>
+          <th>Data</th>
+          <th>Confronto</th>
+          <th><code>minutos</code></th>
+          <th>Tempo Extra</th>
+          <th>Fator ($240/\text{MIN}$)</th>
+          <th>{{ data.var_meta.short_label }} Bruto</th>
+          <th>{{ data.var_meta.short_label }} Norm. (48m)</th>
+          <th>PTS (Bruto &rarr; 48m)</th>
+          <th>REB (Bruto &rarr; 48m)</th>
+          <th>AST (Bruto &rarr; 48m)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in data.ot_games %}
+        <tr>
+          <td><strong>{{ g.time }}</strong></td>
+          <td>{{ g.data }}</td>
+          <td><code>{{ g.confronto }}</code></td>
+          <td><span class="badge badge-warn">{{ g.minutos }} min</span></td>
+          <td>{{ g.prorrogacoes }}</td>
+          <td><code>{{ g.fator_norm }}</code></td>
+          <td><strong>{{ g.var_bruto }}</strong></td>
+          <td><strong>{{ g.var_norm48|num2 }}</strong></td>
+          <td>{{ g.pts_bruto }} &rarr; {{ g.pts_norm48|num2 }}</td>
+          <td>{{ g.reb_bruto }} &rarr; {{ g.reb_norm48|num2 }}</td>
+          <td>{{ g.ast_bruto }} &rarr; {{ g.ast_norm48|num2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="two-col-grid">
+  <div class="card">
+    <div class="card-title">Impacto da Normalização (48 min) na Média e DP de {{ data.var_meta.short_label }}</div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Equipe</th>
+            <th>Jogos OT</th>
+            <th>Média Bruta</th>
+            <th>DP Bruto</th>
+            <th>Média (48m)</th>
+            <th>DP (48m)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for n in data.norm_comparison %}
+          <tr>
+            <td><strong>{{ n.time }}</strong></td>
+            <td>{{ n.jogos_ot }}</td>
+            <td>{{ n.media_bruta|num2 }}</td>
+            <td>{{ n.dp_bruto|num2 }}</td>
+            <td><strong>{{ n.media_norm48|num2 }}</strong></td>
+            <td><strong>{{ n.dp_norm48|num2 }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Resumo das Regras de Auditoria Algébrica e de Domínio</div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Regra Verificada</th>
+            <th>Conformidade</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in data.domain_checks %}
+          <tr>
+            <td>{{ c.regra }}</td>
+            <td><code>{{ c.conformes }}</code></td>
+            <td><span class="badge badge-ok">{{ c.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-ot", {{ data.chart_ot_json | safe }});
+</script>
+{% endblock %}
+

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Dicionário de Dados | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Dicionário de Dados</div>
+  <h2>Dicionário de Variáveis (Original × Português)</h2>
+  <p>
+    Mapeamento das <strong>{{ data.total_original_cols }} colunas originais</strong> da base
+    (2.238 linhas × 28 colunas na liga; 150 jogos no recorte) e das <strong>{{ data.total_derived_cols }} variáveis derivadas</strong>
+    na etapa de preparação, totalizando <strong>{{ data.total_clean_cols }} colunas</strong>.
+  </p>
+</div>
+
+<!-- Barra de Filtro Interativo -->
+<form method="get" action="{{ url_for('parte1.dicionario') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Recorte de Equipe (Domínio Observado):</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (n = 150 jogos)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74 jogos)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76 jogos)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="papel">Filtrar por Papel no Estudo:</label>
+    <select name="papel" id="papel" class="filter-select" data-autosubmit="true">
+      <option value="todas" {% if selected_role == 'todas' %}selected{% endif %}>Todas as 34 Colunas (28 Originais + 6 Derivadas)</option>
+      <option value="estudo" {% if selected_role == 'estudo' %}selected{% endif %}>7 Variáveis Principais do Estudo</option>
+      <option value="derivadas" {% if selected_role == 'derivadas' %}selected{% endif %}>6 Variáveis Derivadas na Preparação</option>
+      <option value="excluidas" {% if selected_role == 'excluidas' %}selected{% endif %}>8 Colunas Excluídas para ML/DL</option>
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar Visão</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Dimensão da Base Bruta</div>
+    <div class="kpi-value">{{ data.raw_shape }}</div>
+    <div class="kpi-sub">30 equipes da NBA · Temporada Regular</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Dimensão da Base Processada</div>
+    <div class="kpi-value">{{ data.clean_shape }}</div>
+    <div class="kpi-sub">Recorte Boston Celtics + New Orleans Pelicans</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Amostra no Filtro Atual</div>
+    <div class="kpi-value">{{ data.filtered_rows }} jogos</div>
+    <div class="kpi-sub">Exibindo {{ data.rows|length }} variáveis na tabela</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Variáveis Foco da Análise</div>
+    <div class="kpi-value">7 variáveis</div>
+    <div class="kpi-sub"><code>pontos</code>, <code>rebotes</code>, <code>assistencias</code>, <code>roubos</code>, <code>tocos</code>, <code>faltas</code>, <code>bolas3_convertidas</code></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Composição Estrutural e Tipológica do Dicionário de Dados</div>
+  <div class="card-subtitle">
+    Distribuição das 34 variáveis de <code>jogos_limpo.csv</code> segundo seu papel analítico no projeto e sua natureza estatística.
+  </div>
+  <div id="chart-dict" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box">
+  <h3>Interpretação Crítica do Dicionário e da Padronização Semântica</h3>
+  <ul>
+    <li>
+      <strong>Padronização Terminológica em Português:</strong> As siglas originais em inglês do <em>box score</em> da NBA (como <code>FG3M</code>, <code>STL</code>, <code>BLK</code>, <code>PF</code>, <code>WL</code>) foram renomeadas para identificadores autoexplicativos em português (<code>bolas3_convertidas</code>, <code>roubos</code>, <code>tocos</code>, <code>faltas</code>, <code>vitoria</code>). Isso elimina ambiguidades entre métricas de volume (tentativas vs. conversões) e taxas relativas (<code>pct_arremessos</code>, <code>pct_bolas3</code>, <code>pct_lances_livres</code>).
+    </li>
+    <li>
+      <strong>Natureza Discreta vs. Aproximação Contínua:</strong> Embora as 7 variáveis do estudo sejam contagens inteiras não-negativas (variáveis quantitativas discretas), <code>pontos</code> (amplitude de 84 a 148 pontos) possui suporte amplo o suficiente para se comportar como quase-contínua, enquanto <code>roubos</code> ([0 ; 15]) e <code>tocos</code> ([0 ; 12]) operam em contagens baixas próximas de zero, o que impacta diretamente testes paramétricos de normalidade, cálculo de moda e assimetria/CV.
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Tabela Completa do Dicionário de Dados ({{ data.rows|length }} colunas listadas)</span>
+    <div>
+      <span class="badge badge-study">Verde = 7 Variáveis do Estudo</span>
+      <span class="badge badge-derived">Azul = Derivada</span>
+      <span class="badge badge-excluded">Vermelho = Excluída ML/DL</span>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Nome Original</th>
+          <th>Novo Nome (PT)</th>
+          <th>Significado Descritivo</th>
+          <th>Tipo Estatístico</th>
+          <th>Unidade</th>
+          <th>Domínio Observado ({{ selected_team }})</th>
+          <th>Papel no Estudo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr class="{% if row.is_study %}highlight-study{% elif row.is_excluded %}highlight-excluded{% elif row.is_derived %}highlight-derived{% endif %}">
+          <td><strong>{{ row.ordem }}</strong></td>
+          <td><code>{{ row.nome_original }}</code></td>
+          <td><code>{{ row.nome_pt }}</code></td>
+          <td>{{ row.significado }}</td>
+          <td>{{ row.tipo }}</td>
+          <td>{{ row.unidade }}</td>
+          <td><code>{{ row.dominio_observado }}</code></td>
+          <td>
+            {% if row.is_study %}
+              <span class="badge badge-study">{{ row.papel }}</span>
+            {% elif row.is_excluded %}
+              <span class="badge badge-excluded">{{ row.papel }}</span>
+            {% elif row.is_derived %}
+              <span class="badge badge-derived">{{ row.papel }}</span>
+            {% else %}
+              <span class="badge badge-aux">{{ row.papel }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-dict", {{ data.chart_json | safe }});
+</script>
+{% endblock %}
+

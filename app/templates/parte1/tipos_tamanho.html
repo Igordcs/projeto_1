@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Tipos de Dados e Tamanho da Base | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Dicionário e Estrutura da Base</div>
+  <h2>Tipos de Dados, Tamanho da Amostra e Cobertura Sazonal</h2>
+  <p>
+    Análise da estrutura matricial da base (de <strong>{{ data.raw_total_rows }} × {{ data.raw_total_cols }}</strong> na liga completa
+    para <strong>{{ data.clean_total_rows }} × {{ data.clean_total_cols }}</strong> no recorte processado), granularidade observacional
+    e distribuição mensal das partidas entre outubro de 2025 e março de 2026.
+  </p>
+</div>
+
+<!-- Seletor Interativo de Time e Variável -->
+<form method="get" action="{{ url_for('parte1.tipos_tamanho') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (n = 150)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável do Estudo (Gráfico e Médias Mensais):</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>
+        {{ meta.label }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar Análise</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Base Completa (30 Equipes)</div>
+    <div class="kpi-value">{{ data.raw_total_rows }} × {{ data.raw_total_cols }}</div>
+    <div class="kpi-sub">62.664 células originais verificadas</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Recorte do Grupo (2 Equipes)</div>
+    <div class="kpi-value">{{ data.clean_total_rows }} × {{ data.clean_total_cols }}</div>
+    <div class="kpi-sub">6,70% dos jogos da liga (150 de 2.238)</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Boston Celtics (Leste)</div>
+    <div class="kpi-value" style="color: var(--celtics-green);">{{ data.celtics_rows }} jogos</div>
+    <div class="kpi-sub">22/10/2025 a 29/03/2026</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">New Orleans Pelicans (Oeste)</div>
+    <div class="kpi-value" style="color: var(--pelicans-red);">{{ data.pelicans_rows }} jogos</div>
+    <div class="kpi-sub">22/10/2025 a 29/03/2026</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Cobertura Sazonal de Jogos por Mês e Evolução de {{ data.var_meta.label }}</span>
+    <span class="badge badge-study">{{ data.var_meta.unit }}</span>
+  </div>
+  <div class="card-subtitle">
+    O calendário da NBA concentra menor número de partidas em outubro (início da temporada em 22/10) e fevereiro (pausa para o All-Star Weekend), e maior densidade em janeiro e março.
+  </div>
+  <div id="chart-month" class="plotly-chart"></div>
+</div>
+
+<div class="interpretation-box navy">
+  <h3>Interpretação Crítica: Granularidade, Balanceamento e Tipagem</h3>
+  <ul>
+    <li>
+      <strong>Unidade Observacional (Granularidade):</strong> Cada linha da tabela representa <strong>1 atuação de 1 equipe em 1 partida oficial</strong>. Consequentemente, uma partida disputada entre duas equipes da liga gera 2 linhas na base bruta de 2.238 registros (totalizando 1.119 partidas únicas na liga). No recorte de 150 linhas, há 149 partidas distintas, pois Celtics e Pelicans se enfrentaram em 27/10/2025 (jogo contabilizado para ambos).
+    </li>
+    <li>
+      <strong>Quase-Balanceamento Amostral ($n_{\text{BOS}} = 74$ vs. $n_{\text{NOP}} = 76$):</strong> A diferença de apenas 2 partidas entre as duas equipes garante tamanhos amostrais praticamente idênticos ($n \approx 75$), conferindo excelente poder estatístico e simetria de graus de liberdade para comparações paramétricas e não-paramétricas entre os dois times.
+    </li>
+    <li>
+      <strong>Comportamento Mensal de {{ data.var_meta.label }}:</strong> A visualização lado a lado permite inspecionar se oscilações na média de <code>{{ data.variable }}</code> decorrem de mudanças táticas ao longo dos meses ou do tamanho reduzido da subamostra em outubro (5–6 jogos por time).
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">Distribuição Mensal de Jogos, Vitórias e Média de {{ data.var_meta.short_label }} ({{ data.var_meta.unit }})</div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Mês</th>
+          <th>Jogos Celtics</th>
+          <th>Vitórias Celtics</th>
+          <th>Média {{ data.var_meta.short_label }} (Celtics)</th>
+          <th>Jogos Pelicans</th>
+          <th>Vitórias Pelicans</th>
+          <th>Média {{ data.var_meta.short_label }} (Pelicans)</th>
+          <th>Total de Jogos no Mês</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in data.monthly_rows %}
+        <tr>
+          <td><strong>{{ m.mes_label }}</strong> (mês {{ m.mes_num }})</td>
+          <td>{{ m.jogos_celtics }}</td>
+          <td>{{ m.vitorias_celtics }}</td>
+          <td><strong>{{ m.media_var_celtics|num2 }}</strong> {{ data.var_meta.unit }}</td>
+          <td>{{ m.jogos_pelicans }}</td>
+          <td>{{ m.vitorias_pelicans }}</td>
+          <td><strong>{{ m.media_var_pelicans|num2 }}</strong> {{ data.var_meta.unit }}</td>
+          <td><span class="badge badge-aux">{{ m.total_jogos }} jogos</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Síntese da Tipagem Estatística e Computacional das 34 Colunas</div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Categoria Tipológica</th>
+          <th>Colunas Originais</th>
+          <th>Colunas Derivadas</th>
+          <th>Exemplos na Base Limpa</th>
+          <th>Tratamento Computacional e Estatístico</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in data.type_summary %}
+        <tr>
+          <td><strong>{{ t.categoria }}</strong></td>
+          <td>{{ t.qtd_originais }}</td>
+          <td>{{ t.qtd_derivadas }}</td>
+          <td><code>{{ t.exemplos }}</code></td>
+          <td>{{ t.tratamento }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-month", {{ data.chart_month_json | safe }});
+</script>
+{% endblock %}
+

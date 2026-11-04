@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Visão Geral e Jogos — Boston Celtics & New Orleans Pelicans{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Temporada Regular NBA 2025–2026</div>
+  <h2>
+    {% if selected_team == 'todos' %}
+      Painel Geral — Boston Celtics &amp; New Orleans Pelicans
+    {% else %}
+      Painel da Equipe — {{ selected_team }}
+    {% endif %}
+  </h2>
+  <p>
+    Selecione uma equipe para inspecionar seu retrospecto, o comportamento das 7 variáveis do estudo e o registro completo de partidas na temporada ({{ overview.date_start }} a {{ overview.date_end }}).
+  </p>
+</div>
+
+<!-- Seletor Direto de Equipe -->
+<form method="get" action="{{ url_for('main.index') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team-home">Selecionar Equipe:</label>
+    <select name="team" id="team-home" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (150 jogos)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (74 jogos)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (76 jogos)</option>
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Visualizar Dados</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Jogos Exibidos</div>
+    <div class="kpi-value">{{ overview.sel_games }} partidas</div>
+    <div class="kpi-sub">
+      {% if selected_team == 'todos' %}
+        74 Celtics + 76 Pelicans (Base total: {{ overview.raw_rows }} jogos)
+      {% else %}
+        Temporada Regular 2025–26 ({{ overview.sel_ot_games }} com prorrogação)
+      {% endif %}
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Campanha (Vitórias – Derrotas)</div>
+    <div class="kpi-value" style="color: {% if selected_team == 'New Orleans Pelicans' %}var(--pelicans-red){% else %}var(--celtics-green){% endif %};">
+      {{ overview.sel_wins }}V – {{ overview.sel_losses }}D
+    </div>
+    <div class="kpi-sub">{{ overview.sel_win_pct|num2 }}% de aproveitamento</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Média de Pontos (PTS)</div>
+    <div class="kpi-value">{{ overview.sel_pts_mean|num2 }}</div>
+    <div class="kpi-sub">pontos por partida</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Média de Rebotes e Assistências</div>
+    <div class="kpi-value">{{ overview.sel_reb_mean|num2 }} / {{ overview.sel_ast_mean|num2 }}</div>
+    <div class="kpi-sub">rebotes / assistências por jogo</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Resumo das 7 Variáveis do Estudo ({{ 'Ambos os Times' if selected_team == 'todos' else selected_team }})</span>
+    <span class="badge badge-study">n = {{ overview.sel_games }} jogos</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Variável</th>
+          <th>Sigla Original</th>
+          <th>Média ({{ 'Geral' if selected_team == 'todos' else selected_team }})</th>
+          <th>Desvio Padrão</th>
+          <th>Mediana</th>
+          <th>Mínimo – Máximo</th>
+          <th>Média Celtics (n=74)</th>
+          <th>Média Pelicans (n=76)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in overview.study_summary %}
+        <tr>
+          <td><strong>{{ item.label }}</strong></td>
+          <td><code>{{ item.original }}</code></td>
+          <td><strong>{{ item.sel_mean|num2 }}</strong> {{ item.unit }}</td>
+          <td>{{ item.sel_std|num2 }}</td>
+          <td>{{ item.sel_median|num2 }}</td>
+          <td>[{{ item.sel_min }} ; {{ item.sel_max }}]</td>
+          <td>{{ item.celtics_mean|num2 }} ± {{ item.celtics_std|num2 }}</td>
+          <td>{{ item.pelicans_mean|num2 }} ± {{ item.pelicans_std|num2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Partidas Registradas ({{ overview.games_list|length }} jogos)</span>
+    <span class="badge badge-aux">{{ 'Boston Celtics & New Orleans Pelicans' if selected_team == 'todos' else selected_team }}</span>
+  </div>
+  <div class="card-subtitle">
+    Listagem completa dos jogos com as variáveis tratadas em português.
+  </div>
+  <div class="table-responsive" style="max-height: 540px; overflow-y: auto;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Jogo #</th>
+          <th>Data</th>
+          <th>Equipe</th>
+          <th>Confronto</th>
+          <th>Mando</th>
+          <th>Resultado</th>
+          <th>Min</th>
+          <th>PTS</th>
+          <th>REB</th>
+          <th>AST</th>
+          <th>STL</th>
+          <th>BLK</th>
+          <th>PF</th>
+          <th>FG3M</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in overview.games_list %}
+        <tr>
+          <td>#{{ g.numero_jogo }}</td>
+          <td>{{ g.data }}</td>
+          <td><strong>{{ g.time }}</strong></td>
+          <td><code>{{ g.confronto }}</code></td>
+          <td>{{ g.mandante }}</td>
+          <td>
+            {% if g.vitoria == 1 %}
+              <span class="badge badge-ok">Vitória</span>
+            {% else %}
+              <span class="badge badge-excluded">Derrota</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if g.prorrogacao == 1 %}
+              <span class="badge badge-warn">{{ g.minutos }} (OT)</span>
+            {% else %}
+              {{ g.minutos }}
+            {% endif %}
+          </td>
+          <td><strong>{{ g.pontos }}</strong></td>
+          <td>{{ g.rebotes }}</td>
+          <td>{{ g.assistencias }}</td>
+          <td>{{ g.roubos }}</td>
+          <td>{{ g.tocos }}</td>
+          <td>{{ g.faltas }}</td>
+          <td>{{ g.bolas3_convertidas }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

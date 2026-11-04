@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}NBA Analytics — Celtics & Pelicans{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+  {% set cur_team = selected_team if selected_team is defined else 'todos' %}
+  <!-- Sidebar com as seções do sistema -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <h1>NBA Analytics · 2025–26</h1>
+      <p>Boston Celtics &amp; New Orleans Pelicans</p>
+    </div>
+
+    <div class="nav-group">
+      <a href="{{ url_for('main.index', team=cur_team) }}" class="nav-link {% if active_page == 'home' %}active{% endif %}">
+        <span>Visão Geral e Jogos</span>
+      </a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">(i) Dicionário de Dados</div>
+      <a href="{{ url_for('parte1.dicionario', team=cur_team) }}" class="nav-link {% if active_page == 'dicionario' %}active{% endif %}">
+        <span>Dicionário de Variáveis</span>
+      </a>
+      <a href="{{ url_for('parte1.tipos_tamanho', team=cur_team) }}" class="nav-link {% if active_page == 'tipos_tamanho' %}active{% endif %}">
+        <span>Tipos e Tamanho da Base</span>
+      </a>
+      <a href="{{ url_for('parte1.tratamentos', team=cur_team) }}" class="nav-link {% if active_page == 'tratamentos' %}active{% endif %}">
+        <span>Preparação e Tratamentos</span>
+      </a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">(ii) Medidas Descritivas</div>
+      <span class="nav-link disabled">
+        <span>Medidas por Variável e Time</span>
+      </span>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">(iii) Gráficos Produzidos</div>
+      <span class="nav-link disabled">
+        <span>Boxplot e Barras Comparativas</span>
+      </span>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">(iv) Síntese e Interpretação</div>
+      <span class="nav-link disabled">
+        <span>Síntese Geral dos Resultados</span>
+      </span>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">(v) Qualidade dos Dados</div>
+      <a href="{{ url_for('parte1.ausentes', team=cur_team) }}" class="nav-link {% if active_page == 'ausentes' %}active{% endif %}">
+        <span>Valores Ausentes (Missing)</span>
+      </a>
+      <a href="{{ url_for('parte1.valores_especiais', team=cur_team) }}" class="nav-link {% if active_page == 'valores_especiais' %}active{% endif %}">
+        <span>Inconsistências e Especiais</span>
+      </a>
+      <span class="nav-link disabled">
+        <span>Detecção de Outliers</span>
+      </span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div><strong>Laboratório de Ciência de Dados</strong></div>
+      <div>Temporada Regular 2025–2026</div>
+    </div>
+  </aside>
+
+  <!-- Conteúdo Principal -->
+  <div class="main-wrapper">
+    <header class="topbar">
+      <div class="topbar-info">
+        <span class="team-pill celtics">Boston Celtics (74 jogos)</span>
+        <span class="team-pill pelicans">New Orleans Pelicans (76 jogos)</span>
+        <span class="team-pill neutral">22/10/2025 a 29/03/2026</span>
+      </div>
+      <form method="get" action="{{ request.path }}" style="display:flex; align-items:center; gap:0.5rem;">
+        {% for k, v in request.args.items() if k != 'team' %}
+          <input type="hidden" name="{{ k }}" value="{{ v }}">
+        {% endfor %}
+        <label for="global-team" style="font-size:0.82rem; font-weight:600; color:#334155;">Visualizar Time:</label>
+        <select name="team" id="global-team" class="filter-select" data-autosubmit="true">
+          <option value="todos" {% if cur_team == 'todos' %}selected{% endif %}>Ambos os Times (150 jogos)</option>
+          <option value="Boston Celtics" {% if cur_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (74 jogos)</option>
+          <option value="New Orleans Pelicans" {% if cur_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (76 jogos)</option>
+        </select>
+      </form>
+    </header>
+
+    <main class="content-container">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

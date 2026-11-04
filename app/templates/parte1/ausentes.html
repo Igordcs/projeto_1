@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title %}Valores Ausentes (Missing) e Simulação MCAR/MAR | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Qualidade dos Dados · Valores Ausentes (Missing)</div>
+  <h2>Valores Ausentes: Diagnóstico Real, Teoria (MCAR/MAR/MNAR) e Simulação</h2>
+  <p>
+    Verificação exaustiva de completude da base (<strong>0 ausentes em todas as 34 colunas</strong>), fundamentação teórica
+    dos mecanismos de Rubin (1976) e dos testes formais (<strong>Little</strong>, <strong>Jamshidian-Jalal</strong>,
+    <strong>Listing &amp; Schlittgen</strong> e <strong>Regressão Logística de Fairclough</strong>), seguida de demonstração
+    empírica via simulação controlada de ausências (~{{ data.missing_rate_pct }}%) em <code>pontos</code> (PTS) e <code>assistencias</code> (AST).
+  </p>
+</div>
+
+<!-- Barra Interativa para Simulação -->
+<form method="get" action="{{ url_for('parte1.ausentes') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Recorte da Simulação:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (n = 150)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="taxa">Proporção Simulada de Ausência:</label>
+    <select name="taxa" id="taxa" class="filter-select" data-autosubmit="true">
+      <option value="0.10" {% if selected_rate == '0.10' %}selected{% endif %}>~10% de Ausência</option>
+      <option value="0.15" {% if selected_rate == '0.15' %}selected{% endif %}>~15% de Ausência</option>
+      <option value="0.20" {% if selected_rate == '0.20' %}selected{% endif %}>~20% de Ausência</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="seed">Semente Aleatória (Seed):</label>
+    <select name="seed" id="seed" class="filter-select" data-autosubmit="true">
+      <option value="42" {% if selected_seed == 42 %}selected{% endif %}>Seed = 42 (Padrão Reprodutível)</option>
+      <option value="7" {% if selected_seed == 7 %}selected{% endif %}>Seed = 7</option>
+      <option value="123" {% if selected_seed == 123 %}selected{% endif %}>Seed = 123</option>
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Recalcular Simulação</button>
+</form>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Ausentes na Base Real</div>
+    <div class="kpi-value" style="color: var(--celtics-green);">0 (0,00%)</div>
+    <div class="kpi-sub">100% de completude nas 2.238 × 28 células</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Teste de Little (Cenário MCAR)</div>
+    <div class="kpi-value">p = {{ data.little_mcar.p_value|num4 }}</div>
+    <div class="kpi-sub">d² = {{ data.little_mcar.d2_stat|num2 }} (gl = {{ data.little_mcar.df }}) &rarr; Não rejeita MCAR</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Teste de Little (Cenário MAR)</div>
+    <div class="kpi-value" style="color: var(--pelicans-red);">p = {{ data.little_mar.p_value|num4 }}</div>
+    <div class="kpi-sub">d² = {{ data.little_mar.d2_stat|num2 }} (gl = {{ data.little_mar.df }}) &rarr; Rejeita MCAR!</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Logística Fairclough (MAR PTS)</div>
+    <div class="kpi-value" style="color: var(--pelicans-red);">p = {{ data.fair_mar_pts.llr_pvalue|num4 }}</div>
+    <div class="kpi-sub">LLR = {{ data.fair_mar_pts.llr_stat|num2 }} &rarr; Confirma dependência observada</div>
+  </div>
+</div>
+
+<!-- 1. Fundamentação Teórica MCAR, MAR, MNAR -->
+<div class="card">
+  <div class="card-title">
+    <span>1. Fundamentação Teórica: Taxonomia de Mecanismos de Ausência (Rubin, 1976)</span>
+    <span class="badge badge-study">MCAR · MAR · MNAR</span>
+  </div>
+  <div class="card-subtitle">
+    Seja $Y = (Y_{\text{obs}}, Y_{\text{mis}})$ a matriz de dados decomposta em partes observada e ausente, e $R$ a matriz indicadora binária de ausência ($R_{ij}=1$ se ausente, $0$ se observado):
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Mecanismo</th>
+          <th>Definição Matemática</th>
+          <th>Significado Estatístico e Exemplo no Basquete</th>
+          <th>Consequência e Tratamento Adequado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>MCAR</strong><br><small><em>Missing Completely at Random</em></small></td>
+          <td><code>P(R | Y_obs, Y_mis) = P(R)</code></td>
+          <td>A probabilidade de um valor faltar é uniforme e independe tanto das variáveis observadas quanto do próprio valor faltante. Ex.: falha pontual de transmissão que apaga ~10% dos registros de <code>PTS</code> de forma puramente aleatória.</td>
+          <td>A análise de casos completos (<em>listwise deletion</em>) <strong>não introduz viés</strong> nas médias ou regressões, apenas reduz a precisão (maior erro padrão por menor $n$). Imputação simples ou EM recupera eficiência.</td>
+        </tr>
+        <tr>
+          <td><strong>MAR</strong><br><small><em>Missing at Random</em></small></td>
+          <td><code>P(R | Y_obs, Y_mis) = P(R | Y_obs)</code></td>
+          <td>A probabilidade de ausência depende de <strong>outras variáveis observadas na base</strong> ($Y_{\text{obs}}$), mas não do valor faltante em si após condicionar em $Y_{\text{obs}}$. Ex.: partidas com altíssimo volume de arremessos (<code>FGA</code>) e rebotes (<code>REB</code>) sofrerem atraso de consolidação de <code>PTS</code>/<code>AST</code>.</td>
+          <td>Excluir linhas com ausentes <strong>gera viés sistemático</strong> (subestima a média se jogos de alto volume faltarem mais). Deve-se usar Imputação Múltipla (MICE), Máxima Verossimilhança (FIML/EM) ou ponderação pelo inverso da probabilidade (IPW) condicionada em $Y_{\text{obs}}$.</td>
+        </tr>
+        <tr>
+          <td><strong>MNAR</strong><br><small><em>Missing Not at Random</em></small></td>
+          <td><code>P(R | Y_obs, Y_mis)</code> depende de <code>Y_mis</code></td>
+          <td>O mecanismo de ausência depende diretamente do próprio valor não observado, mesmo controlando pelas demais colunas. Ex.: omitir deliberadamente o registro de assistências exatamente nas partidas em que a equipe teve pífia criação ofensiva.</td>
+          <td>Mecanismo <strong>não-ignorável</strong>: métodos padrão (MICE/EM sob MAR) continuam enviesados. Exige modelos conjuntos de seleção (Heckman) ou modelos de mistura de padrões (<em>pattern-mixture models</em>) com análise de sensibilidade.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 2. Os 4 Testes de Diagnóstico e Viabilidade em Python -->
+<div class="card">
+  <div class="card-title">
+    <span>2. Métodos Formais de Diagnóstico (Little, Jamshidian-Jalal, Listing-Schlittgen e Fairclough) e Viabilidade em Python</span>
+    <span class="badge badge-derived">Teoria &amp; Implementação</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Método / Referência</th>
+          <th>Como e Por Que Usar (Hipótese Testada e Estatística)</th>
+          <th>Viabilidade em Python e Justificativa Técnica</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="highlight-study">
+          <td><strong>1. Teste MCAR de Little (1988)</strong></td>
+          <td>
+            Testa globalmente $H_0: \text{MCAR}$ contra $H_1: \text{MAR/MNAR}$. Agrupa as linhas pelos $J$ padrões de ausência e soma as distâncias de Mahalanobis entre a média observada $\bar{y}_{\text{obs}, j}$ de cada padrão e o vetor de médias $\hat{\mu}_{\text{obs}, j}$ estimado via algoritmo EM:
+            $d^2 = \sum_{j=1}^J m_j (\bar{y}_{\text{obs}, j} - \hat{\mu}_{\text{obs}, j})^T \hat{\Sigma}_{\text{obs}, j}^{-1} (\bar{y}_{\text{obs}, j} - \hat{\mu}_{\text{obs}, j}) \sim \chi^2_{(\sum k_j - p)}$.
+          </td>
+          <td>
+            <span class="badge badge-ok">Viável · Implementado e Aplicado</span><br>
+            Implementado integralmente em <code>app/analysis/preparacao.py</code> (<code>little_mcar_test</code>) com estimação EM multivariada e distribuição $\chi^2$ do <code>scipy.stats</code>.
+          </td>
+        </tr>
+        <tr class="highlight-study">
+          <td><strong>2. Regressão Logística de Fairclough (1997)</strong></td>
+          <td>
+            Para cada variável com ausências, cria-se a variável binária $R_i \in \{0, 1\}$ ($1 = \text{ausente}$) e ajusta-se um modelo logístico $\text{logit}(P(R_i=1 \mid X_{\text{obs}})) = \beta_0 + \sum \beta_k X_{ik}$ sobre as variáveis completamente observadas. Se o teste de razão de verossimilhança ($LLR$) ou os coeficientes $\beta_k$ forem significativos ($p < 0{,}05$), rejeita-se MCAR em favor de <strong>MAR</strong>, identificando exatamente quais variáveis explicam a perda.
+          </td>
+          <td>
+            <span class="badge badge-ok">Viável · Implementado via statsmodels</span><br>
+            Aplicado com <code>statsmodels.api.Logit</code> (<code>fairclough_logistic_test</code>), reportando $\hat{\beta}$, erro padrão, estatística $z$, $p$-valor, <em>Odds Ratio</em> e $p$-valor global $LLR$.
+          </td>
+        </tr>
+        <tr class="highlight-derived">
+          <td><strong>3. Teste de Jamshidian &amp; Jalal (2010)</strong></td>
+          <td>
+            Enquanto o teste de Little avalia apenas diferenças nas <strong>médias</strong> assumindo normalidade multivariada, Jamshidian &amp; Jalal propõem testar a <strong>homocedasticidade das matrizes de covariância</strong> entre os padrões de ausência após imputação, combinando o teste paramétrico de Hawkins (normalidade + igualdade de covariâncias) com o teste não-paramétrico $k$-amostras de Anderson-Darling sobre as distâncias.
+          </td>
+          <td>
+            <span class="badge badge-warn">Parcial em Python · Justificado</span><br>
+            O pacote original <code>MissMech</code> (em R) foi descontinuado no CRAN e não possui porte oficial em Python. Contudo, implementamos aqui seu núcleo comparativo entre padrões via <strong>Teste de Levene</strong> (homocedasticidade), <strong>Kolmogorov-Smirnov</strong> (distribuição não-paramétrica) e <strong>t de Welch</strong> no <code>scipy.stats</code>.
+          </td>
+        </tr>
+        <tr class="highlight-excluded">
+          <td><strong>4. Teste de Listing &amp; Schlittgen (1998 — LS)</strong></td>
+          <td>
+            Proposto para <strong>dados longitudinais com medidas repetidas e perda de seguimento monotônica (<em>dropout</em>)</strong> em ensaios clínicos: resume a trajetória de cada indivíduo até o instante anterior à saída e compara escores médios entre os que abandonaram o estudo e os que permaneceram.
+          </td>
+          <td>
+            <span class="badge badge-excluded">Inviável neste Domínio · Justificado</span><br>
+            Além de não possuir implementação em bibliotecas Python, o teste LS exige um painel balanceado de múltiplos indivíduos acompanhados nos mesmos tempos $t_1, \dots, t_T$ com abandono definitivo (<em>dropout</em>). Na base da NBA, os jogos são eventos completos sem abandono de equipe ao longo da temporada.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 3. Demonstração Prática com Simulação MCAR vs MAR -->
+<div class="card">
+  <div class="card-title">
+    <span>3. Demonstração Prática por Simulação (~{{ data.missing_rate_pct }}% de Ausências em <code>pontos</code> e <code>assistencias</code>)</span>
+    <span class="badge badge-study">n = {{ data.n_rows }} jogos · Seed = {{ data.seed }}</span>
+  </div>
+  <div class="card-subtitle">
+    No Cenário 1 (MCAR), ~{{ data.missing_rate_pct }}% dos valores de <code>pontos</code> e <code>assistencias</code> foram removidos por sorteio uniforme independente. No Cenário 2 (MAR), a probabilidade de remoção depende logisticamente do volume ofensivo observado (<code>arremessos_tentados</code>, <code>rebotes</code> e <code>bolas3_convertidas</code>).
+  </div>
+  <div id="chart-sim" class="plotly-chart"></div>
+</div>
+
+<div class="two-col-grid">
+  <!-- Resultado do Teste de Little -->
+  <div class="card">
+    <div class="card-title">Resultado 1: Teste Global MCAR de Little (1988)</div>
+    <div class="card-subtitle">Comparação direta da estatística $d^2$ nos dados simulados MCAR vs. MAR:</div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Cenário Simulado</th>
+            <th>Padrões ($J$)</th>
+            <th>Estatística $d^2$</th>
+            <th>g.l.</th>
+            <th>$p$-valor</th>
+            <th>Decisão ($\alpha = 0{,}05$)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Cenário 1: MCAR</strong></td>
+            <td>{{ data.little_mcar.n_patterns }}</td>
+            <td>{{ data.little_mcar.d2_stat|num2 }}</td>
+            <td>{{ data.little_mcar.df }}</td>
+            <td><strong>{{ data.little_mcar.p_value|num4 }}</strong></td>
+            <td><span class="badge badge-ok">{{ data.little_mcar.decisao }}</span></td>
+          </tr>
+          <tr>
+            <td><strong>Cenário 2: MAR</strong></td>
+            <td>{{ data.little_mar.n_patterns }}</td>
+            <td><strong>{{ data.little_mar.d2_stat|num2 }}</strong></td>
+            <td>{{ data.little_mar.df }}</td>
+            <td><strong>{{ data.little_mar.p_value|num4 }}</strong></td>
+            <td><span class="badge badge-excluded">{{ data.little_mar.decisao }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top: 1rem;">
+      <div style="font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 0.4rem;">
+        Testes Complementares entre Padrões (Inspirados em Jamshidian-Jalal sobre <code>arremessos_tentados</code>):
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Cenário</th>
+            <th>Média FGA (Obs vs. Ausente)</th>
+            <th>Levene $p$ (Variâncias)</th>
+            <th>KS $p$ (Distribuição)</th>
+            <th>Welch $t$ ($p$-valor)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>MCAR</strong></td>
+            <td>{{ data.jj_mcar.mean_obs|num2 }} vs. {{ data.jj_mcar.mean_mis|num2 }}</td>
+            <td>{{ data.jj_mcar.levene_p|num4 }}</td>
+            <td>{{ data.jj_mcar.ks_p|num4 }}</td>
+            <td>{{ data.jj_mcar.t_p|num4 }}</td>
+          </tr>
+          <tr>
+            <td><strong>MAR</strong></td>
+            <td>{{ data.jj_mar.mean_obs|num2 }} vs. <strong>{{ data.jj_mar.mean_mis|num2 }}</strong></td>
+            <td>{{ data.jj_mar.levene_p|num4 }}</td>
+            <td><strong>{{ data.jj_mar.ks_p|num4 }}</strong></td>
+            <td><strong>{{ data.jj_mar.t_p|num4 }}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Impacto nas Médias e Desvio Padrão -->
+  <div class="card">
+    <div class="card-title">Impacto do Mecanismo de Ausência na Média e no Desvio Padrão</div>
+    <div class="card-subtitle">
+      Observe como sob MCAR a média observada permanece próxima da média real, enquanto sob MAR ocorre viés negativo acentuado (pois jogos de alto volume ofensivo tiveram maior probabilidade de ausência):
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Variável</th>
+            <th>Real Completo ($n={{ data.n_rows }}$)</th>
+            <th>Após MCAR (Viés na Média)</th>
+            <th>Após MAR (Viés na Média)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for imp in data.impact_rows %}
+          <tr>
+            <td><strong>{{ imp.variavel }}</strong></td>
+            <td>
+              Média: <strong>{{ imp.media_completa|num2 }}</strong><br>
+              DP: {{ imp.dp_completo|num2 }}
+            </td>
+            <td>
+              Média: {{ imp.media_mcar|num2 }} (DP: {{ imp.dp_mcar|num2 }})<br>
+              Ausentes: {{ imp.n_mcar_mis }} ({{ imp.pct_mcar_mis|num2 }}%)<br>
+              <span class="badge badge-ok">Viés = {{ imp.vies_mcar|num2 }}</span>
+            </td>
+            <td>
+              Média: <strong>{{ imp.media_mar|num2 }}</strong> (DP: {{ imp.dp_mar|num2 }})<br>
+              Ausentes: {{ imp.n_mar_mis }} ({{ imp.pct_mar_mis|num2 }}%)<br>
+              <span class="badge badge-excluded">Viés = {{ imp.vies_mar|num2 }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Resultado 2: Regressão Logística de Fairclough -->
+<div class="card">
+  <div class="card-title">
+    <span>Resultado 2: Regressão Logística de Fairclough sobre o Indicador de Ausência $R_{\text{pontos}}$</span>
+    <span class="badge badge-derived">statsmodels.api.Logit</span>
+  </div>
+  <div class="card-subtitle">
+    Sob MCAR ($LLR\ p = {{ data.fair_mcar_pts.llr_pvalue|num4 }}$), nenhuma variável observada ultrapassa o limiar crítico $|z| = 1{,}96$. Sob MAR ($LLR\ p = {{ data.fair_mar_pts.llr_pvalue|num4 }}$), <code>arremessos_tentados</code> e <code>rebotes</code> ultrapassam o limiar crítico com folga, diagnosticando corretamente o mecanismo MAR.
+  </div>
+  <div id="chart-fair" class="plotly-chart"></div>
+
+  <div class="two-col-grid" style="margin-top: 1rem; margin-bottom: 0;">
+    <div>
+      <h4 style="font-size: 0.92rem; margin-bottom: 0.5rem; color: var(--celtics-green);">
+        Cenário 1 (MCAR) — Modelo Logístico para $R_{\text{pontos}}$ (LLR $p = {{ data.fair_mcar_pts.llr_pvalue|num4 }}$)
+      </h4>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Preditor (z-score)</th>
+            <th>$\hat{\beta}$</th>
+            <th>EP</th>
+            <th>$z$</th>
+            <th>$p$-valor</th>
+            <th>Odds Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in data.fair_mcar_pts.coefs %}
+          <tr>
+            <td><code>{{ c.preditor }}</code></td>
+            <td>{{ c.beta|num2 }}</td>
+            <td>{{ c.erro_padrao|num2 }}</td>
+            <td>{{ c.z_stat|num2 }}</td>
+            <td>{{ c.p_valor|num4 }}</td>
+            <td>{{ c.odds_ratio|num2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <h4 style="font-size: 0.92rem; margin-bottom: 0.5rem; color: var(--pelicans-red);">
+        Cenário 2 (MAR) — Modelo Logístico para $R_{\text{pontos}}$ (LLR $p = {{ data.fair_mar_pts.llr_pvalue|num4 }}$)
+      </h4>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Preditor (z-score)</th>
+            <th>$\hat{\beta}$</th>
+            <th>EP</th>
+            <th>$z$</th>
+            <th>$p$-valor</th>
+            <th>Odds Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in data.fair_mar_pts.coefs %}
+          <tr class="{% if c.significativo %}highlight-excluded{% endif %}">
+            <td><code>{{ c.preditor }}</code></td>
+            <td><strong>{{ c.beta|num2 }}</strong></td>
+            <td>{{ c.erro_padrao|num2 }}</td>
+            <td><strong>{{ c.z_stat|num2 }}</strong></td>
+            <td><strong>{{ c.p_valor|num4 }}</strong></td>
+            <td><strong>{{ c.odds_ratio|num2 }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Tabela Real de Ausentes (0% em todas as colunas) -->
+<div class="card">
+  <div class="card-title">
+    <span>4. Verificação Real de Valores Ausentes por Coluna (Base Completa vs. Recorte)</span>
+    <span class="badge badge-ok">0 Ausentes em Todas as 34 Colunas</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Coluna Original</th>
+          <th>Coluna Limpa (PT)</th>
+          <th>Ausentes na Liga (n=2238)</th>
+          <th>% Ausentes (Liga)</th>
+          <th>Ausentes no Recorte (n={{ data.n_rows }})</th>
+          <th>% Ausentes (Recorte)</th>
+          <th>Taxa de Completude</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in data.missing_table %}
+        <tr>
+          <td><strong>{{ m.ordem }}</strong></td>
+          <td><code>{{ m.nome_original }}</code></td>
+          <td><code>{{ m.nome_pt }}</code></td>
+          <td>{{ m.ausentes_raw }}</td>
+          <td>{{ m.pct_raw|num2 }}%</td>
+          <td><strong>{{ m.ausentes_recorte }}</strong></td>
+          <td>{{ m.pct_recorte|num2 }}%</td>
+          <td><span class="badge badge-ok">{{ m.completude_pct|num2 }}%</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-sim", {{ data.chart_sim_json | safe }});
+  renderPlotlyChart("chart-fair", {{ data.chart_fair_json | safe }});
+</script>
+{% endblock %}
+

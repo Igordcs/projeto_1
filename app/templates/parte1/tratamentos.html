@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Preparação e Tratamentos | NBA Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="eyebrow">Preparação dos Dados</div>
+  <h2>Tratamento de Datas, Codificação Categórica e Seleção para ML/DL</h2>
+  <p>
+    Transformações aplicadas sobre <code>GAME_DATE</code>, <code>WL</code> e <code>MATCHUP</code>,
+    acompanhadas da justificativa técnica e demonstração empírica das <strong>8 colunas excluídas</strong> para modelos de
+    Aprendizado de Máquina e Aprendizado Profundo (ML/DL).
+  </p>
+</div>
+
+<!-- Seletor Interativo de Time e Variável -->
+<form method="get" action="{{ url_for('parte1.tratamentos') }}" class="filter-bar">
+  <div class="filter-group">
+    <label for="team">Equipe:</label>
+    <select name="team" id="team" class="filter-select" data-autosubmit="true">
+      <option value="todos" {% if selected_team == 'todos' %}selected{% endif %}>Ambos os Times (n = 150)</option>
+      <option value="Boston Celtics" {% if selected_team == 'Boston Celtics' %}selected{% endif %}>Boston Celtics (n = 74)</option>
+      <option value="New Orleans Pelicans" {% if selected_team == 'New Orleans Pelicans' %}selected{% endif %}>New Orleans Pelicans (n = 76)</option>
+    </select>
+  </div>
+  <div class="filter-group">
+    <label for="var">Variável do Estudo (Gráficos Temporais e Mando):</label>
+    <select name="var" id="var" class="filter-select" data-autosubmit="true">
+      {% for col_key, meta in STUDY_VARIABLES.items() %}
+      <option value="{{ col_key }}" {% if selected_var == col_key %}selected{% endif %}>
+        {{ meta.label }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-primary">Atualizar Visão</button>
+</form>
+
+<!-- Bloco 1: Tratamento de Datas -->
+<div class="card">
+  <div class="card-title">
+    <span>1. Tratamento de Datas: <code>GAME_DATE</code> &rarr; <code>data_jogo</code> (datetime), <code>mes</code>, <code>dias_desde_estreia</code> e <code>numero_jogo</code></span>
+    <span class="badge badge-derived">Variáveis Temporais</span>
+  </div>
+  <div class="card-subtitle">
+    Strings de data não podem alimentar modelos matemáticos diretamente. A conversão para <code>datetime64[ns]</code> permite ordenar cronologicamente as partidas de cada franquia e extrair variáveis numéricas de progressão na temporada.
+  </div>
+  <div id="chart-time" class="plotly-chart"></div>
+</div>
+
+<!-- Bloco 2: Categóricas para Numéricas -->
+<div class="card">
+  <div class="card-title">
+    <span>2. Transformação de Categóricas em Numéricas: <code>WL</code> e <code>MATCHUP</code></span>
+    <span class="badge badge-derived">Codificação Numérica</span>
+  </div>
+  <div class="card-subtitle">
+    <code>WL</code> (<code>vitoria</code>) já vem codificada nativamente como binária (<code>1</code> = Vitória, <code>0</code> = Derrota). Já <code>MATCHUP</code> (ex.: <code>"BOS vs. PHI"</code> ou <code>"NOP @ MEM"</code>) é decomposta em <code>mandante</code> (<code>1</code> se <code>"vs."</code>, <code>0</code> se <code>"@"</code>) e <code>adversario</code> (sigla de 3 letras).
+  </div>
+  <div id="chart-mando" class="plotly-chart"></div>
+
+  <div class="table-responsive" style="margin-top: 1rem;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Equipe</th>
+          <th>Condição de Mando</th>
+          <th>Jogos Disputados</th>
+          <th>Vitórias</th>
+          <th>Aproveitamento (%)</th>
+          <th>Média de {{ data.var_meta.short_label }} ({{ data.var_meta.unit }})</th>
+          <th>Desvio Padrão (ddof=1)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.home_away_stats %}
+        <tr>
+          <td><strong>{{ row.time }}</strong></td>
+          <td><code>{{ row.mando }}</code></td>
+          <td>{{ row.jogos }}</td>
+          <td>{{ row.vitorias }}</td>
+          <td><strong>{{ row.aproveitamento_pct|num2 }}%</strong></td>
+          <td><strong>{{ row.media_var|num2 }}</strong> {{ data.var_meta.unit }}</td>
+          <td>{{ row.dp_var|num2 }} {{ data.var_meta.unit }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Amostra Antes vs Depois -->
+<div class="card">
+  <div class="card-title">Amostra de Auditoria: Colunas Originais vs. Variáveis Derivadas (Primeiros 8 Jogos do Filtro)</div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Equipe (<code>time</code>)</th>
+          <th><code>GAME_DATE</code></th>
+          <th>&rarr; <code>mes</code></th>
+          <th>&rarr; <code>dias_desde_estreia</code></th>
+          <th>&rarr; <code>numero_jogo</code></th>
+          <th><code>MATCHUP</code> original</th>
+          <th>&rarr; <code>mandante</code> (0/1)</th>
+          <th>&rarr; <code>adversario</code></th>
+          <th><code>WL</code> (<code>vitoria</code>)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in data.sample_transform %}
+        <tr>
+          <td>{{ s.time }}</td>
+          <td><code>{{ s.game_date_raw }}</code></td>
+          <td><span class="badge badge-derived">{{ s.mes }}</span></td>
+          <td><span class="badge badge-derived">{{ s.dias_desde_estreia }} dias</span></td>
+          <td><span class="badge badge-derived">#{{ s.numero_jogo }}</span></td>
+          <td><code>{{ s.matchup_raw }}</code></td>
+          <td><strong>{{ s.mandante }}</strong> ({% if s.mandante == 1 %}Casa{% else %}Fora{% endif %})</td>
+          <td><code>{{ s.adversario }}</code></td>
+          <td><strong>{{ s.wl_raw }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Bloco 3: Exclusão de Colunas para ML/DL -->
+<div class="interpretation-box amber">
+  <h3>3. Por que Excluir 8 Colunas antes de Treinar Modelos de ML/DL? (Prevenção de Data Leakage e Overfitting)</h3>
+  <p>
+    Em problemas de Aprendizado Supervisionado (como prever a vitória <code>WL</code> ou estimar a pontuação <code>PTS</code>), manter colunas administrativas ou variáveis acumuladas pós-jogo compromete severamente a validade do modelo:
+  </p>
+  <ul>
+    <li>
+      <strong>Vazamento de Dados (<em>Data Leakage</em>) em <code>W</code>, <code>L</code> e <code>W_PCT</code>:</strong> Na tabela oficial da NBA, o recorde acumulado de vitórias (<code>W</code>) e derrotas (<code>L</code>) é atualizado <em>após o término da própria partida</em>. Portanto, a diferença $\Delta W_t = W_t - W_{t-1}$ vale exatamente $1$ se o time venceu e $0$ se perdeu — entregando a resposta ao modelo com 100% de certeza espúria.
+    </li>
+    <li>
+      <strong>Identificadores e Quase-Constantes (<code>Team_ID</code>, <code>Game_ID</code>, <code>MIN</code>):</strong> <code>Game_ID</code> identifica unicamente a partida (induzindo memorização), enquanto <code>MIN</code> vale exatamente <code>240</code> em 96% dos jogos (144 de 150) e só assume 265 ou 290 minutos quando a partida empata no tempo regulamentar (informação indisponível antes do fim do 4º quarto).
+    </li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <span>Quadro de Colunas Excluídas para Modelagem de ML/DL e Justificativa Técnica</span>
+    <span class="badge badge-excluded">8 Colunas Excluídas</span>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Coluna Original</th>
+          <th>Nome Limpo (PT)</th>
+          <th>Categoria do Problema</th>
+          <th>Justificativa Técnica e Estatística para Exclusão</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in data.excluded_columns %}
+        <tr class="highlight-excluded">
+          <td><code>{{ col.original }}</code></td>
+          <td><code>{{ col.nome_pt }}</code></td>
+          <td><span class="badge badge-excluded">{{ col.motivo_curto }}</span></td>
+          <td>{{ col.justificativa }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Prova Empírica de Vazamento de Dados (Data Leakage) em W, L e W_PCT (Boston Celtics — Jogos #1 a #6)</div>
+  <div class="card-subtitle">
+    Observe como o incremento $\Delta W_t = W_t - W_{t-1}$ reproduz exatamente a coluna alvo <code>vitoria (WL)</code> em 100% dos jogos:
+  </div>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Jogo #</th>
+          <th>Data</th>
+          <th>Confronto</th>
+          <th>Alvo: <code>vitoria (WL)</code></th>
+          <th><code>W</code> (Vitórias Acum.)</th>
+          <th><code>L</code> (Derrotas Acum.)</th>
+          <th><code>W_PCT</code></th>
+          <th>$\Delta W_t = W_t - W_{t-1}$ (Vazamento Direto)</th>
+          <th>$\Delta L_t = L_t - L_{t-1}$</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data.leakage_demo %}
+        <tr>
+          <td><strong>#{{ r.numero_jogo }}</strong></td>
+          <td>{{ r.data }}</td>
+          <td><code>{{ r.confronto }}</code></td>
+          <td><span class="badge {% if r.vitoria_alvo == 1 %}badge-ok{% else %}badge-excluded{% endif %}">{{ r.vitoria_alvo }}</span></td>
+          <td>{{ r.w_acum }}</td>
+          <td>{{ r.l_acum }}</td>
+          <td><code>{{ r.w_pct }}</code></td>
+          <td><strong>{{ r.delta_w }}</strong> (&equiv; WL = {{ r.vitoria_alvo }})</td>
+          <td>{{ r.delta_l }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  renderPlotlyChart("chart-time", {{ data.chart_time_json | safe }});
+  renderPlotlyChart("chart-mando", {{ data.chart_mando_json | safe }});
+</script>
+{% endblock %}
+
